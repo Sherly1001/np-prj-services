@@ -2,6 +2,7 @@ CC = gcc
 CFLAGS = -Wall
 
 SRC = ./src
+INC = ./include
 BUILD = ./build
 BIN = ${BUILD}/bin
 OBJ = ${BUILD}/obj
@@ -20,7 +21,7 @@ main: ${OBJS}
 	${CC} -lwebsockets $^ -o ${BIN}/$@
 
 ${OBJ}/%.o: ${SRC}/%.c
-	${CC} ${CFLAGS} -c $< -o $@
+	${CC} ${CFLAGS} -I${INC} -c $< -o $@
 
 run:
 	${BIN}/main
