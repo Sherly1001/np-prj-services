@@ -46,7 +46,7 @@ int my_ws_callback(
                     pmsg->binary ? LWS_WRITE_BINARY : LWS_WRITE_TEXT,
                     pmsg->first, pmsg->final);
 
-        m = lws_write(wsi, pmsg->payload + LWS_PRE, pmsg->len, flags);
+        m = lws_write(wsi, (unsigned char*)pmsg->payload + LWS_PRE, pmsg->len, flags);
         if (m < pmsg->len) {
             lwsl_err("ERROR %d writing to ws socket\n", m);
             return -1;
@@ -97,7 +97,7 @@ int my_ws_callback(
             break;
         }
 
-        memcpy(msg.payload + LWS_PRE, in, len);
+        memcpy((char*)msg.payload + LWS_PRE, in, len);
         if (!lws_ring_insert(pss->ring, &msg, 1)) {
             msg_destroy(&msg);
             lwsl_warn("dropping\n");
