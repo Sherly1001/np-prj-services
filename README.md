@@ -7,11 +7,8 @@ If you are using linux, just install [libwebsockets-dev](https://archlinux.org/p
 
 ## Compile
 ```hs
-make
+cmake -B build -S . [-A x64] [-DCMAKE_TOOLCHAIN_FILE=<path to vcpkg\scripts\buildsystems\vcpkg.cmake>]
+cd build
+cmake --build .
 ```
-
-## Run
-Must compile first.
-```hs
-make run
-```
+*`[arguments] are optional`*
