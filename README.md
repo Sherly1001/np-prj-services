@@ -11,4 +11,4 @@ cmake -B build -S . [-A x64] [-DCMAKE_TOOLCHAIN_FILE=<path to vcpkg\scripts\buil
 cd build
 cmake --build .
 ```
-*`[arguments] are optional`*
+*`[arguments]` are optional*
