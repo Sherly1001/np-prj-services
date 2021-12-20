@@ -27,11 +27,10 @@ struct my_per_vhost_data {
     struct my_per_session_data *pss_list;
 };
 
-typedef void (*onopen_t)(struct lws *wsi, struct my_per_session_data *pss);
-typedef void (*onclose_t)(struct lws *wsi, struct my_per_session_data *pss);
+typedef void (*onopen_t)(struct lws *wsi);
+typedef void (*onclose_t)(struct lws *wsi);
 typedef void (*onmessage_t)(
     struct lws *wsi,
-    struct my_per_session_data *pss,
     void *msg,
     uint64_t size,
     int type
@@ -53,7 +52,6 @@ int my_ws_callback(
 
 int my_ws_send(
     struct lws *wsi,
-    struct my_per_session_data *pss,
     void *msg,
     size_t len,
     int is_bin

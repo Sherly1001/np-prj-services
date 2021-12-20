@@ -86,7 +86,7 @@ int my_ws_callback(
             sizeof(struct my_msg), MY_RING_DEPTH, msg_destroy);
 
         if (mws && mws->onopen) {
-            mws->onopen(wsi, pss);
+            mws->onopen(wsi);
         }
         break;
 
@@ -96,7 +96,7 @@ int my_ws_callback(
         lws_ring_destroy(pss->write_ring);
 
         if (mws && mws->onclose) {
-            mws->onclose(wsi, pss);
+            mws->onclose(wsi);
         }
         break;
 
@@ -136,7 +136,7 @@ int my_ws_callback(
                 &all_payload_len, &all_payload_type);
 
             if (mws && mws->onmessage) {
-                mws->onmessage(wsi, pss, all_payload,
+                mws->onmessage(wsi, all_payload,
                     all_payload_len, all_payload_type);
             }
 
@@ -155,11 +155,16 @@ int my_ws_callback(
 
 int my_ws_send(
     struct lws *wsi,
-    struct my_per_session_data *pss,
     void *msg,
     size_t len,
     int is_bin
 ) {
+    struct my_per_vhost_data *vhd = lws_protocol_vh_priv_get(
+        lws_get_vhost(wsi), lws_get_protocol(wsi));
+    struct my_per_session_data *pss = vhd->pss_list;
+    while (pss && pss->wsi != wsi) pss = pss->pss_list;
+    if (!pss) return -1;
+
     struct my_msg amsg;
     size_t n;
 
@@ -220,7 +225,7 @@ int my_ws_send_all(
 
     lws_start_foreach_llp(struct my_per_session_data **, ppss, vhd->pss_list) {
         if ((*ppss)->wsi != except) {
-            size_t n = my_ws_send((*ppss)->wsi, *ppss, msg, len, is_bin);
+            size_t n = my_ws_send((*ppss)->wsi, msg, len, is_bin);
             if (n < len) return n;
         }
     } lws_end_foreach_llp(ppss, pss_list);

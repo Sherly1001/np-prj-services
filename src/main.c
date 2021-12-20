@@ -4,7 +4,7 @@
 
 #include <ws.h>
 
-void onopen(struct lws *wsi, struct my_per_session_data *pss) {
+void onopen(struct lws *wsi) {
     char client_name[50];
     char client_ip[50];
     int fd = lws_get_socket_fd(wsi);
@@ -12,7 +12,7 @@ void onopen(struct lws *wsi, struct my_per_session_data *pss) {
     lwsl_warn("got new connection from: %p: %s%s", wsi, client_name, client_ip);
 }
 
-void onclose(struct lws *wsi, struct my_per_session_data *pss) {
+void onclose(struct lws *wsi) {
     char client_name[50];
     char client_ip[50];
     int fd = lws_get_socket_fd(wsi);
@@ -22,7 +22,6 @@ void onclose(struct lws *wsi, struct my_per_session_data *pss) {
 
 void onmessage(
     struct lws *wsi,
-    struct my_per_session_data *pss,
     void *msg,
     size_t len,
     int is_bin
@@ -32,7 +31,7 @@ void onmessage(
 
     lwsl_err("got %ld, bin: %d", len, is_bin);
 
-    my_ws_send(wsi, pss, rep, strlen(rep), 0);
+    my_ws_send(wsi, rep, strlen(rep), 0);
     my_ws_send_all(wsi, wsi, msg, len, is_bin);
 }
 
