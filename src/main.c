@@ -36,7 +36,7 @@ void onmessage(
     my_ws_send_all(wsi, wsi, msg, len, is_bin);
 }
 
-struct my_ws ws;
+struct my_ws ws = { onopen, onclose, onmessage };
 
 static struct lws_protocols protocols[] = {
     { "http", lws_callback_http_dummy, 0, 0, 0, NULL, 0 },
@@ -71,10 +71,6 @@ int main(int argc, const char **argv) {
     int logs = LLL_USER | LLL_ERR | LLL_WARN | LLL_NOTICE;
 
     signal(SIGINT, sigint_handler);
-
-    ws.onopen = &onopen;
-    ws.onclose = &onclose;
-    ws.onmessage = &onmessage;
 
     int port = 8080;
     if ((p = lws_cmdline_option(argc, argv, "-p")))
