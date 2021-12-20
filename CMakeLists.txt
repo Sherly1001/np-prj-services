@@ -6,7 +6,7 @@ find_path(LWS_INCLUDE libwebsockets.h)
 find_package(libwebsockets CONFIG REQUIRED)
 
 set(SRC src)
-set(CFLAGS -Wall -Werror -Wextra)
+set(CMAKE_C_FLAGS "-Wall")
 set(LIBS websockets_shared)
 
 include_directories(include ${LWS_INCLUDE})
