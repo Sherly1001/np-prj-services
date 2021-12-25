@@ -3,6 +3,7 @@
 #include <libwebsockets.h>
 
 #include <ws.h>
+#include <cmd.h>
 
 void onopen(struct lws *wsi) {
     char client_name[50];
@@ -31,8 +32,29 @@ void onmessage(
 
     lwsl_err("got %ld, bin: %d", len, is_bin);
 
+    if (!is_bin) {
+        char *str = malloc(len + 1);
+        memcpy(str, msg, len);
+        str[len] = '\0';
+
+        cmd_t *cmd = cmd_from_string(str);
+        if (cmd) {
+            cmd_show(cmd);
+
+            char *cmd_s = cmd_to_string(cmd);
+            my_ws_send_all(wsi, wsi, cmd_s, strlen(cmd_s), 0);
+            free(cmd_s);
+
+            cmd_destroy(cmd);
+        } else {
+            sprintf(rep, "cmd parse failed");
+        }
+
+        free(str);
+    }
+
     my_ws_send(wsi, rep, strlen(rep), 0);
-    my_ws_send_all(wsi, wsi, msg, len, is_bin);
+    // my_ws_send_all(wsi, wsi, msg, len, is_bin);
 }
 
 struct my_ws ws = { onopen, onclose, onmessage };
