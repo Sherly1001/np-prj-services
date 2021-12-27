@@ -1,21 +1,29 @@
 #include <stdlib.h>
+#include <string.h>
 
-enum cmd_kind {
-    CMD_INT,
-    CMD_FLOAT,
-    CMD_STRING,
-    CMD_BOOL,
-};
+typedef const char* cmd_type_t;
+typedef const char* cmd_val_kind_t;
+
+#define CMD_IS_TYPE_OF(type, of) (strcmp(type, of) == 0)
+#define CMD_INSERT "insert, %d %d %d %s"
+#define CMD_REMOVE "remove, %d %d %d %d"
+#define CMD_GET    "get, %d"
+
+#define CMD_IS_KIND_OF(kind, of) (strcmp(kind, of) == 0)
+#define CMD_VAL_INT     "%ld"
+#define CMD_VAL_FLOAT   "%f"
+#define CMD_VAL_STRING  "%s"
+#define CMD_VAL_BOOL    "%u"
 
 union cmd_val_u {
     long i;
     double f;
     char *s;
-    short b;
+    u_int8_t b;
 };
 
 typedef struct cmd_val {
-    enum cmd_kind kind;
+    cmd_val_kind_t kind;
     union cmd_val_u val;
 } cmd_val_t;
 
@@ -36,11 +44,13 @@ char *cmd_to_string(const cmd_t *cmd);
 
 
 // create new cmd with type and args return NULL if failed
-cmd_t *cmd_new(const char *type, ...);
+cmd_t *cmd_new(cmd_type_t type, ...)
+    __attribute__ ((format (printf, 1, 2)));
 void cmd_destroy(const cmd_t *cmd);
 void cmd_show(const cmd_t *cmd);
 
 
 // creaate new cmd_val with kind and value
-cmd_val_t *cmd_val_new(enum cmd_kind kind, ...);
+cmd_val_t *cmd_val_new(cmd_val_kind_t kind, ...)
+    __attribute__ ((format (printf, 1, 2)));
 void cmd_val_destroy(cmd_val_t *cmd_val);
