@@ -33,7 +33,7 @@ typedef struct cmd_args {
 } cmd_args_t;
 
 typedef struct cmd {
-    char *cmd;
+    char *type;
     cmd_args_t *args;
 } cmd_t;
 
