@@ -26,6 +26,7 @@ typedef struct cmd {
 
 // create new cmd from string return NULL if failed
 cmd_t *cmd_from_string(const char *str);
+// NO NEED to free() the string after using
 const char *cmd_to_string(const cmd_t *cmd);
 
 
