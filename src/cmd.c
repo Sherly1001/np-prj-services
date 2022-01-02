@@ -1,4 +1,4 @@
-#include "../include/cmd.h"
+#include <cmd.h>
 
 
 // create new cmd from string return NULL if failed
