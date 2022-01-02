@@ -155,7 +155,7 @@ int my_ws_callback(
 
 int my_ws_send(
     struct lws *wsi,
-    void *msg,
+    const void *msg,
     size_t len,
     int is_bin
 ) {
@@ -215,7 +215,7 @@ int my_ws_send(
 int my_ws_send_all(
     struct lws *wsi,
     struct lws *except,
-    void *msg,
+    const void *msg,
     size_t len,
     int is_bin
 ) {

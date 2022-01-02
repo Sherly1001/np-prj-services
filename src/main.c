@@ -41,9 +41,9 @@ void onmessage(
         if (cmd) {
             cmd_show(cmd);
 
-            char *cmd_s = cmd_to_string(cmd);
+            const char *cmd_s = cmd_to_string(cmd);
             my_ws_send_all(wsi, wsi, cmd_s, strlen(cmd_s), 0);
-            free(cmd_s);
+            // free(cmd_s);
 
             cmd_destroy(cmd);
         } else {
