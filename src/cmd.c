@@ -1,66 +1,130 @@
-#include <cmd.h>
-#include <stdarg.h>
+#include "../include/cmd.h"
+
 
 // create new cmd from string return NULL if failed
 cmd_t *cmd_from_string(const char *str) {
-    // TODO: cmd must be malloced here
-    return NULL;
+    cmd_t *cmd = malloc(sizeof(cmd_t));
+    struct json_object *parsed_json = NULL;
+    struct json_object *_type = NULL;
+    struct json_object *_args = NULL;
+
+    cmd->_cmd_json_tokener = json_tokener_parse(str);
+    parsed_json = cmd->_cmd_json_tokener;
+    if (!parsed_json) return NULL;
+
+    // 1.get cmd->type
+    json_object_object_get_ex(parsed_json, "type", &_type);
+    if((!_type) || (json_object_get_type(_type) != json_type_string)) {
+        cmd_destroy(cmd);
+        return NULL;
+    }
+    cmd->type = _type;
+
+    // 2.get cmd->args
+    json_object_object_get_ex(parsed_json, "args", &_args);
+    if((!_args) || (json_object_get_type(_args) != json_type_array)) {
+        cmd_destroy(cmd);
+        return NULL;
+    }
+    cmd->args = _args;
+
+    return cmd;
 }
 
-char *cmd_to_string(const cmd_t *cmd) {
-    // TODO: return string must be malloced here
-    return  NULL;
+const char *cmd_to_string(const cmd_t *cmd) {
+    if (!cmd) return NULL;
+    if (!cmd->_cmd_json_tokener)return NULL;
+
+    return json_object_to_json_string_ext(cmd->_cmd_json_tokener, JSON_C_TO_STRING_PLAIN);
+    // NO NEED to free() the string after using
 }
 
 
 // create new cmd with type and args return NULL if failed
 cmd_t *cmd_new(cmd_type_t type, ...) {
-    // TODO: cmd must be malloced here
-    return NULL;
+    cmd_t *cmd = malloc(sizeof(cmd_t));
+    cmd->type = NULL;
+    cmd->args = NULL;
+    cmd->_cmd_json_tokener = json_object_new_object();
+    json_object *tokener = cmd->_cmd_json_tokener;
+
+    // 1. get type
+    if (CMD_IS_TYPE_OF(type, CMD_INSERT)) {
+        json_object_object_add(tokener, "type", json_object_new_string("insert"));
+    } else if (CMD_IS_TYPE_OF(type, CMD_REMOVE)) {
+        json_object_object_add(tokener, "type", json_object_new_string("remove"));
+    } else if (CMD_IS_TYPE_OF(type, CMD_GET)) {
+        json_object_object_add(tokener, "type", json_object_new_string("get"));
+    } else {
+        cmd_destroy(cmd);
+        return NULL;
+    }
+    json_object_object_get_ex(tokener, "type", &cmd->type);
+
+    // 2. get args 
+    json_object *_args = NULL;
+    va_list va;
+
+    va_start(va, type);
+    _args = cmd_args_new(type, va);
+    va_end(va);
+
+    if (!_args) {
+        cmd_destroy(cmd);
+        return NULL;
+    }
+    json_object_object_add(tokener,"args", _args);
+    json_object_object_get_ex(tokener, "args", &cmd->args);
+
+    return cmd;
 }
 
-void cmd_destroy(const cmd_t *cmd) {
-    // TODO: free cmd and cmd_args here
+void cmd_destroy(cmd_t *cmd) {
+    json_object_put(cmd->_cmd_json_tokener);
+    free(cmd);
+    cmd = NULL;
 }
 
 void cmd_show(const cmd_t *cmd) {
-    // TODO: show cmd in format: `type: [arg1, arg2, ...]`
+    if (!cmd) return;
+
+    if (!cmd->type) return;
+    printf("%s", json_object_get_string(cmd->type));
+
+    if (!cmd->args) {
+        printf("\n");
+        return;
+    }
+    printf(": %s\n", json_object_to_json_string_ext(cmd->args, JSON_C_TO_STRING_SPACED));
 }
 
-// creaate new cmd_val with kind and value
-cmd_val_t *cmd_val_new(cmd_val_kind_t kind, ...) {
-    cmd_val_t *cmd_val = malloc(sizeof(cmd_val_t));
-    cmd_val->kind = kind;
+// create new cmd_args with kind and value
+json_object *cmd_args_new(const char *fmt, va_list ap) {
+    json_object *_args = json_object_new_array();
 
-    va_list ap;
-    va_start(ap, kind);
+    char *_fmt = malloc(strlen(fmt) + 1);
+    strcpy(_fmt, fmt);
 
-    char *s = NULL;
+    char* kind = strtok(_fmt, " ");
+    kind = strtok(NULL, " "); // start from the second token
 
-    if (CMD_IS_KIND_OF(kind, CMD_VAL_INT)) {
-        cmd_val->val.i = va_arg(ap, long);
-    } else if (CMD_IS_KIND_OF(kind, CMD_VAL_FLOAT)) {
-        cmd_val->val.f = va_arg(ap, double);
-    } else if (CMD_IS_KIND_OF(kind, CMD_VAL_STRING)) {
-        s = va_arg(ap, char *);
-        cmd_val->val.s = malloc(strlen(s) + 1);
-        strcpy(cmd_val->val.s, s);
-    } else if (CMD_IS_KIND_OF(kind, CMD_VAL_BOOL)) {
-        cmd_val->val.b = va_arg(ap, int);
-    } else {
-        free(cmd_val);
-        return NULL;
+    while (kind) {
+        if (CMD_ARG_IS_KIND_OF(kind, CMD_ARG_INT)) {
+            json_object_array_add(_args, json_object_new_int64(va_arg(ap, long)));
+        } else if (CMD_ARG_IS_KIND_OF(kind, CMD_ARG_STRING)) {
+            json_object_array_add(_args, json_object_new_string(va_arg(ap, char *)));
+        } else if (CMD_ARG_IS_KIND_OF(kind, CMD_ARG_FLOAT)) {
+            json_object_array_add(_args, json_object_new_double(va_arg(ap, double)));
+        } else if (CMD_ARG_IS_KIND_OF(kind, CMD_ARG_BOOL)) {
+            json_object_array_add(_args, json_object_new_boolean((u_int8_t)va_arg(ap, int)));
+        } else {
+            free(_fmt);
+            json_object_put(_args);
+            return NULL;
+        }
+        kind = strtok(NULL, " ");
     }
 
-    va_end(ap);
-
-    return cmd_val;
-}
-
-void cmd_val_destroy(cmd_val_t *cmd_val) {
-    if (!cmd_val) return;
-    if (CMD_IS_KIND_OF(cmd_val->kind, CMD_VAL_STRING)) {
-        free(cmd_val->val.s);
-    }
-    free(cmd_val);
+    free(_fmt);
+    return _args;
 }
