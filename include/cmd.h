@@ -1,3 +1,6 @@
+#ifndef __CMD_H__
+#define __CMD_H__
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -39,3 +42,5 @@ void cmd_show(const cmd_t *cmd);
 
 // create new cmd_args with kind and value
 json_object *cmd_args_new(const char *fmt, va_list ap);
+
+#endif
