@@ -10,9 +10,17 @@
 typedef const char* cmd_type_t;
 
 #define CMD_IS_TYPE_OF(type, of) (strcmp(type, of) == 0)
-#define CMD_INSERT "insert, %ld %ld %ld %s"
-#define CMD_REMOVE "remove, %ld %ld %ld %ld"
-#define CMD_GET    "get, %ld"
+
+static const char cmd_types[][50] = {
+    "insert, %ld %ld %ld %s",
+    "remove, %ld %ld %ld %ld",
+    "get, %ld",
+};
+extern const char cmd_types[][50];
+
+#define CMD_INSERT cmd_types[0]
+#define CMD_REMOVE cmd_types[1]
+#define CMD_GET    cmd_types[2]
 
 #define CMD_ARG_IS_KIND_OF(kind, of) (strcmp(kind, of) == 0)
 #define CMD_ARG_INT     "%ld"
@@ -28,16 +36,21 @@ typedef struct cmd {
 
 
 // create new cmd from string return NULL if failed
+// and raise new error
 cmd_t *cmd_from_string(const char *str);
 // NO NEED to free() the string after using
 const char *cmd_to_string(const cmd_t *cmd);
 
 
 // create new cmd with type and args return NULL if failed
+// and raise new error
 cmd_t *cmd_new(cmd_type_t type, ...)
     __attribute__ ((format (printf, 1, 2)));
 void cmd_destroy(cmd_t *cmd);
 void cmd_show(const cmd_t *cmd);
+
+// return 1 if ok, raise error if failed
+int cmd_validate(const cmd_t *cmd);
 
 
 // create new cmd_args with kind and value

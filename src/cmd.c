@@ -1,5 +1,5 @@
 #include <cmd.h>
-
+#include <error.h>
 
 // create new cmd from string return NULL if failed
 cmd_t *cmd_from_string(const char *str) {
@@ -12,21 +12,45 @@ cmd_t *cmd_from_string(const char *str) {
     parsed_json = cmd->_cmd_json_tokener;
     if (!parsed_json) return NULL;
 
+    char err_buff[100];
+
     // 1.get cmd->type
     json_object_object_get_ex(parsed_json, "type", &_type);
     if((!_type) || (json_object_get_type(_type) != json_type_string)) {
         cmd_destroy(cmd);
+
+        sprintf(err_buff, "%s: not found key 'type'", __func__);
+        raise_error(401, err_buff);
         return NULL;
     }
     cmd->type = _type;
 
     // 2.get cmd->args
     json_object_object_get_ex(parsed_json, "args", &_args);
-    if((!_args) || (json_object_get_type(_args) != json_type_array)) {
+
+    if(!_args) {
+        cmd_destroy(cmd);
+
+        char err_buff[50];
+        sprintf(err_buff, "%s: not found key 'args'", __func__);
+        raise_error(401, err_buff);
+        return NULL;
+    }
+
+    if (json_object_get_type(_args) != json_type_array) {
+        cmd_destroy(cmd);
+
+        sprintf(err_buff, "%s: key 'args' is not array type", __func__);
+        raise_error(101, err_buff);
+        return NULL;
+    }
+
+    cmd->args = _args;
+
+    if (!cmd_validate(cmd)) {
         cmd_destroy(cmd);
         return NULL;
     }
-    cmd->args = _args;
 
     return cmd;
 }
@@ -57,6 +81,9 @@ cmd_t *cmd_new(cmd_type_t type, ...) {
         json_object_object_add(tokener, "type", json_object_new_string("get"));
     } else {
         cmd_destroy(cmd);
+        char err_buff[100];
+        sprintf(err_buff, "%s: can't create command of type %s", __func__, type);
+        raise_error(201, err_buff);
         return NULL;
     }
     json_object_object_get_ex(tokener, "type", &cmd->type);
@@ -120,6 +147,10 @@ json_object *cmd_args_new(const char *fmt, va_list ap) {
         } else {
             free(_fmt);
             json_object_put(_args);
+
+            char err_buff[100];
+            sprintf(err_buff, "%s: wrong kind '%s'", __func__, kind);
+            raise_error(301, err_buff);
             return NULL;
         }
         kind = strtok(NULL, " ");
@@ -127,4 +158,76 @@ json_object *cmd_args_new(const char *fmt, va_list ap) {
 
     free(_fmt);
     return _args;
+}
+
+// return 1 if ok, raise error if failed
+int cmd_validate(const cmd_t *cmd) {
+    const char *type = json_object_get_string(cmd->type);
+    size_t len = strlen(type);
+
+    int i = 0;
+    int cmd_types_len = sizeof(cmd_types) / sizeof(cmd_types[0]);
+    for (i = 0; i < cmd_types_len; ++i) {
+        if (!strncmp(cmd_types[i], type, len)) {
+            break;
+        }
+    }
+
+    if (i >= cmd_types_len) {
+        char err_buff[100];
+        sprintf(err_buff, "%s: not found command of type %s", __func__, type);
+        raise_error(401, err_buff);
+        return 0;
+    }
+
+    char kinds[50], err_buff[100];
+    strcpy(kinds, cmd_types[i] + len + 2);
+
+    len = json_object_array_length(cmd->args);
+
+    size_t idx = 0;
+    for (char *kind = strtok(kinds, " "); kind;
+        kind = strtok(NULL, " "), ++idx) {
+
+        if (idx >= len) {
+            sprintf(err_buff, "%s: wrong args length %ld, expect '%s'",
+                __func__, idx, cmd_types[i]);
+            raise_error(402, err_buff);
+            return 0;
+        }
+
+        json_object *arg = json_object_array_get_idx(cmd->args, idx);
+        err_buff[0] = '\0';
+
+        if (CMD_ARG_IS_KIND_OF(kind, CMD_ARG_INT)) {
+            if (!json_object_is_type(arg, json_type_int)) {
+                sprintf(err_buff, "%s: args[%ld] wrong type, expect int",
+                    __func__, idx);
+            }
+        } else if (CMD_ARG_IS_KIND_OF(kind, CMD_ARG_FLOAT)) {
+            if (!json_object_is_type(arg, json_type_double)) {
+                sprintf(err_buff, "%s: args[%ld] wrong type, expect float",
+                    __func__, idx);
+            }
+        } else if (CMD_ARG_IS_KIND_OF(kind, CMD_ARG_STRING)) {
+            if (!json_object_is_type(arg, json_type_string)) {
+                sprintf(err_buff, "%s: args[%ld] wrong type, expect string",
+                    __func__, idx);
+            }
+        } else if (CMD_ARG_IS_KIND_OF(kind, CMD_ARG_BOOL)) {
+            if (!json_object_is_type(arg, json_type_boolean)) {
+                sprintf(err_buff, "%s: args[%ld] wrong type, expect bool",
+                    __func__, idx);
+            }
+        } else {
+            sprintf(err_buff, "%s: args[%ld] unknow type", __func__, idx);
+        }
+
+        if (err_buff[0] != '\0') {
+            raise_error(403, err_buff);
+            return 0;
+        }
+    }
+
+    return 1;
 }
