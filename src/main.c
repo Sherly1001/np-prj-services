@@ -4,6 +4,7 @@
 
 #include <ws.h>
 #include <cmd.h>
+#include <error.h>
 
 void onopen(struct lws *wsi) {
     char client_name[50];
@@ -27,7 +28,7 @@ void onmessage(
     size_t len,
     int is_bin
 ) {
-    char rep[50];
+    char rep[1024];
     sprintf(rep, "you sent %ld bytes", len);
 
     lwsl_err("got %ld, bin: %d", len, is_bin);
@@ -47,7 +48,11 @@ void onmessage(
 
             cmd_destroy(cmd);
         } else {
-            sprintf(rep, "cmd parse failed");
+            error_t *err = get_error();
+            if (err) {
+                strcpy(rep, err->message);
+                destroy_error(err);
+            }
         }
 
         free(str);
