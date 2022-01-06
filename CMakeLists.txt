@@ -12,7 +12,7 @@ find_path(LWS_INC libwebsockets.h REQUIRED)
 find_path(JSONC_INC json-c/json.h REQUIRED)
 
 set(SRC src)
-set(CMAKE_C_FLAGS "-Wall")
+set(CMAKE_C_FLAGS "-Wall -Wextra")
 set(LIBS ${LWS_LIBS} ${JSONC_LIBS})
 
 include_directories(include ${LWS_INC} ${JSONC_INC})

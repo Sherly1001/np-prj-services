@@ -85,7 +85,7 @@ static const struct lws_retry_bo retry = {
 
 
 int interrupted = 0;
-void sigint_handler(int sig) {
+void sigint_handler() {
     interrupted = 1;
 }
 
