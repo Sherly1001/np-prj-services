@@ -3,11 +3,18 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdint.h>
 #include <string.h>
 #include <stdarg.h>
 #include <json-c/json.h>
 
+#include <error.h>
+
 typedef const char* cmd_type_t;
+
+typedef uint8_t bool;
+#define true 1
+#define false 0
 
 #define CMD_IS_TYPE_OF(type, of) (strcmp(type, of) == 0)
 
@@ -48,8 +55,8 @@ cmd_t *cmd_new(cmd_type_t type, ...)
 void cmd_destroy(cmd_t *cmd);
 void cmd_show(const cmd_t *cmd);
 
-// return 1 if ok, raise error if failed
-int cmd_validate(const cmd_t *cmd);
+// return true if ok, raise error if failed
+bool cmd_validate(const cmd_t *cmd);
 
 
 // create new cmd_args with kind and value

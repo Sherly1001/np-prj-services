@@ -1,5 +1,4 @@
 #include <cmd.h>
-#include <error.h>
 
 // create new cmd from string return NULL if failed
 cmd_t *cmd_from_string(const char *str) {
@@ -160,8 +159,8 @@ json_object *cmd_args_new(const char *fmt, va_list ap) {
     return _args;
 }
 
-// return 1 if ok, raise error if failed
-int cmd_validate(const cmd_t *cmd) {
+// return true if ok, raise error if failed
+bool cmd_validate(const cmd_t *cmd) {
     const char *type = json_object_get_string(cmd->type);
     size_t len = strlen(type);
 
@@ -177,7 +176,7 @@ int cmd_validate(const cmd_t *cmd) {
         char err_buff[100];
         sprintf(err_buff, "%s: not found command of type %s", __func__, type);
         raise_error(401, err_buff);
-        return 0;
+        return false;
     }
 
     char kinds[50], err_buff[100];
@@ -193,7 +192,7 @@ int cmd_validate(const cmd_t *cmd) {
             sprintf(err_buff, "%s: wrong args length %ld, expect '%s'",
                 __func__, idx, cmd_types[i]);
             raise_error(402, err_buff);
-            return 0;
+            return false;
         }
 
         json_object *arg = json_object_array_get_idx(cmd->args, idx);
@@ -225,9 +224,9 @@ int cmd_validate(const cmd_t *cmd) {
 
         if (err_buff[0] != '\0') {
             raise_error(403, err_buff);
-            return 0;
+            return false;
         }
     }
 
-    return 1;
+    return true;
 }
