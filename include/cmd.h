@@ -16,7 +16,6 @@ static const char cmd_types[][50] = {
     "remove, %ld %ld %ld %ld",
     "get, %ld",
 };
-extern const char cmd_types[][50];
 
 #define CMD_INSERT cmd_types[0]
 #define CMD_REMOVE cmd_types[1]

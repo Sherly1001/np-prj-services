@@ -1,5 +1,7 @@
 #include <error.h>
 
+static error_t *__err_buff = NULL;
+
 void raise_error(int code, const char *message) {
     error_t *err = malloc(sizeof(error_t));
     err->code = code;
