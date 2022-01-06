@@ -3,12 +3,16 @@
 #define MY_RING_DEPTH 4096
 #define MY_PSS_SIZE 2048
 
+typedef uint8_t bool;
+#define true 1
+#define false 0
+
 struct my_msg {
     void *payload;
     size_t len;
-    unsigned short is_first:1;
-    unsigned short is_last:1;
-    unsigned short is_bin:1;
+    bool is_first:1;
+    bool is_last:1;
+    bool is_bin:1;
 };
 
 struct my_per_session_data {
@@ -31,9 +35,9 @@ typedef void (*onopen_t)(struct lws *wsi);
 typedef void (*onclose_t)(struct lws *wsi);
 typedef void (*onmessage_t)(
     struct lws *wsi,
-    void *msg,
-    uint64_t size,
-    int type
+    const void *msg,
+    size_t len,
+    bool is_bin
 );
 
 struct my_ws {
@@ -50,19 +54,19 @@ int my_ws_callback(
     size_t len
 );
 
-int my_ws_send(
+size_t my_ws_send(
     struct lws *wsi,
     const void *msg,
     size_t len,
-    int is_bin
+    bool is_bin
 );
 
-int my_ws_send_all(
+size_t my_ws_send_all(
     struct lws *wsi,
     struct lws *except,
     const void *msg,
     size_t len,
-    int is_bin
+    bool is_bin
 );
 
 #define MY_WS_PROTOCOL(ws) { \

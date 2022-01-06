@@ -6,62 +6,9 @@
 #include <cmd.h>
 #include <error.h>
 
-void onopen(struct lws *wsi) {
-    char client_name[50];
-    char client_ip[50];
-    int fd = lws_get_socket_fd(wsi);
-    lws_get_peer_addresses(wsi, fd, client_name, 50, client_ip, 50);
-    lwsl_warn("got new connection from: %p: %s%s", wsi, client_name, client_ip);
-}
-
-void onclose(struct lws *wsi) {
-    char client_name[50];
-    char client_ip[50];
-    int fd = lws_get_socket_fd(wsi);
-    lws_get_peer_addresses(wsi, fd, client_name, 50, client_ip, 50);
-    lwsl_warn("connection closed: %p: %s%s", wsi, client_name, client_ip);
-}
-
-void onmessage(
-    struct lws *wsi,
-    void *msg,
-    size_t len,
-    int is_bin
-) {
-    char rep[1024];
-    sprintf(rep, "you sent %ld bytes", len);
-
-    lwsl_err("got %ld, bin: %d", len, is_bin);
-
-    if (!is_bin) {
-        char *str = malloc(len + 1);
-        memcpy(str, msg, len);
-        str[len] = '\0';
-
-        cmd_t *cmd = cmd_from_string(str);
-        if (cmd) {
-            cmd_show(cmd);
-
-            const char *cmd_s = cmd_to_string(cmd);
-            my_ws_send_all(wsi, wsi, cmd_s, strlen(cmd_s), 0);
-            // free(cmd_s);
-
-            cmd_destroy(cmd);
-        } else {
-            error_t *err = get_error();
-            if (err) {
-                strcpy(rep, err->message);
-                destroy_error(err);
-            }
-        }
-
-        free(str);
-    }
-
-    my_ws_send(wsi, rep, strlen(rep), 0);
-    // my_ws_send_all(wsi, wsi, msg, len, is_bin);
-}
-
+void onopen(struct lws *wsi);
+void onclose(struct lws *wsi);
+void onmessage(struct lws *wsi, const void *msg, size_t len, bool is_bin);
 struct my_ws ws = { onopen, onclose, onmessage };
 
 static struct lws_protocols protocols[] = {
@@ -129,4 +76,58 @@ int main(int argc, const char **argv) {
     }
 
     lws_context_destroy(context);
+}
+
+void onopen(struct lws *wsi) {
+    char client_name[50];
+    char client_ip[50];
+    int fd = lws_get_socket_fd(wsi);
+    lws_get_peer_addresses(wsi, fd, client_name, 50, client_ip, 50);
+    lwsl_warn("got new connection from: %p: %s%s", wsi, client_name, client_ip);
+}
+
+void onclose(struct lws *wsi) {
+    char client_name[50];
+    char client_ip[50];
+    int fd = lws_get_socket_fd(wsi);
+    lws_get_peer_addresses(wsi, fd, client_name, 50, client_ip, 50);
+    lwsl_warn("connection closed: %p: %s%s", wsi, client_name, client_ip);
+}
+
+void onmessage(
+    struct lws *wsi,
+    const void *msg,
+    size_t len,
+    bool is_bin
+) {
+    char rep[1024];
+    sprintf(rep, "you sent %ld bytes", len);
+
+    lwsl_err("got %ld, bin: %d", len, is_bin);
+
+    if (!is_bin) {
+        char *str = malloc(len + 1);
+        memcpy(str, msg, len);
+        str[len] = '\0';
+
+        cmd_t *cmd = cmd_from_string(str);
+        if (cmd) {
+            cmd_show(cmd);
+
+            const char *cmd_s = cmd_to_string(cmd);
+            my_ws_send_all(wsi, wsi, cmd_s, strlen(cmd_s), false);
+
+            cmd_destroy(cmd);
+        } else {
+            error_t *err = get_error();
+            if (err) {
+                strcpy(rep, err->message);
+                destroy_error(err);
+            }
+        }
+
+        free(str);
+    }
+
+    my_ws_send(wsi, rep, strlen(rep), false);
 }

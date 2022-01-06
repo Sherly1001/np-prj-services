@@ -116,9 +116,9 @@ int my_ws_callback(
 
     case LWS_CALLBACK_RECEIVE:
         msg.len = len;
-        msg.is_first = lws_is_first_fragment(wsi);
-        msg.is_last = lws_is_final_fragment(wsi);
-        msg.is_bin = lws_frame_is_binary(wsi);
+        msg.is_first = (bool)lws_is_first_fragment(wsi);
+        msg.is_last = (bool)lws_is_final_fragment(wsi);
+        msg.is_bin = (bool)lws_frame_is_binary(wsi);
         msg.payload = malloc(LWS_PRE + len);
         if (!msg.payload) {
             lwsl_err("malloc fail");
@@ -153,11 +153,11 @@ int my_ws_callback(
     return 0;
 }
 
-int my_ws_send(
+size_t my_ws_send(
     struct lws *wsi,
     const void *msg,
     size_t len,
-    int is_bin
+    bool is_bin
 ) {
     struct my_per_vhost_data *vhd = lws_protocol_vh_priv_get(
         lws_get_vhost(wsi), lws_get_protocol(wsi));
@@ -169,8 +169,8 @@ int my_ws_send(
     size_t n;
 
     if (len <= MY_PSS_SIZE) {
-        amsg.is_first = 1;
-        amsg.is_last = 1;
+        amsg.is_first = true;
+        amsg.is_last = true;
         amsg.is_bin = is_bin;
         amsg.len = len;
         amsg.payload = malloc(len + LWS_PRE);
@@ -183,8 +183,8 @@ int my_ws_send(
 
     size_t index;
 
-    amsg.is_first = 1;
-    amsg.is_last = 0;
+    amsg.is_first = true;
+    amsg.is_last = false;
     amsg.is_bin = is_bin;
     amsg.len = MY_PSS_SIZE;
     amsg.payload = malloc(MY_PSS_SIZE + LWS_PRE);
@@ -192,7 +192,7 @@ int my_ws_send(
     n = lws_ring_insert(pss->write_ring, &amsg, 1);
     if (n < 1) return n;
 
-    amsg.is_first = 0;
+    amsg.is_first = false;
     for (index = MY_PSS_SIZE; index < len - MY_PSS_SIZE; index += MY_PSS_SIZE) {
         amsg.payload = malloc(MY_PSS_SIZE + LWS_PRE);
         memcpy(amsg.payload + LWS_PRE, msg + index, MY_PSS_SIZE);
@@ -200,7 +200,7 @@ int my_ws_send(
         if (n < 1) return index;
     }
 
-    amsg.is_last = 1;
+    amsg.is_last = true;
     amsg.len = len - index;
     amsg.payload = malloc(len - index + LWS_PRE);
     memcpy(amsg.payload + LWS_PRE, msg + index, len - index);
@@ -212,12 +212,12 @@ int my_ws_send(
     return len;
 }
 
-int my_ws_send_all(
+size_t my_ws_send_all(
     struct lws *wsi,
     struct lws *except,
     const void *msg,
     size_t len,
-    int is_bin
+    bool is_bin
 ) {
     const struct lws_protocols *prl = lws_get_protocol(wsi);
     struct my_per_vhost_data *vhd = lws_protocol_vh_priv_get(
