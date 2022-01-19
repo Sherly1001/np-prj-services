@@ -16,10 +16,10 @@ uint64_t snowflake_id(snowflake_t *snf) {
 
     snf->last_timestamp = cur;
 
-    return (cur - SF_START_TIMESTAMP) << SF_TIMESTAMP_LEFT_OFFSET
-        | snf->worker << SF_WORKER_LEFT_OFFSET
-        | snf->process << SF_PROCESS_LEFT_OFFSET
-        | snf->seq << SF_SEQ_LEFT_OFFSET;
+    return (cur - SF_START_TIMESTAMP) << SF_TIMESTAMP_LEFT_OFFSET |
+           snf->worker << SF_WORKER_LEFT_OFFSET |
+           snf->process << SF_PROCESS_LEFT_OFFSET |
+           snf->seq << SF_SEQ_LEFT_OFFSET;
 }
 
 uint64_t snowflake_lock_id(snowflake_t *snf) {

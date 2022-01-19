@@ -1,0 +1,17 @@
+# vi: ft=yaml
+BasedOnStyle: LLVM
+IndentWidth: 4
+SortIncludes: false
+IndentCaseLabels: true
+IncludeBlocks: Regroup
+
+AllowShortFunctionsOnASingleLine: None
+AllowShortIfStatementsOnASingleLine: WithoutElse
+AllowShortLoopsOnASingleLine: true
+
+AlignAfterOpenBracket: DontAlign
+AlignArrayOfStructures: Left
+AlignConsecutiveMacros: Consecutive
+AlignConsecutiveAssignments: Consecutive
+AlignConsecutiveBitFields: Consecutive
+AlignConsecutiveDeclarations: Consecutive

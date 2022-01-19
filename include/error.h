@@ -5,13 +5,14 @@
 #include <string.h>
 
 typedef struct error {
-    int code;
-    char *message;
+    int           code;
+    char         *message;
     struct error *prev;
 } error_t;
 
-void raise_error(int code, const char *message);
 error_t *get_error();
+
+void raise_error(int code, const char *message);
 void destroy_error(error_t *err);
 
 #endif
