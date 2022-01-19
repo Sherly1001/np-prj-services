@@ -9,57 +9,52 @@
 void onopen(struct lws *wsi);
 void onclose(struct lws *wsi);
 void onmessage(struct lws *wsi, const void *msg, size_t len, bool is_bin);
-struct my_ws ws = { onopen, onclose, onmessage };
+struct my_ws ws = {onopen, onclose, onmessage};
 
 static struct lws_protocols protocols[] = {
-    { "http", lws_callback_http_dummy, 0, 0, 0, NULL, 0 },
+    {"http", lws_callback_http_dummy, 0, 0, 0, NULL, 0},
     MY_WS_PROTOCOL(ws),
     LWS_PROTOCOL_LIST_TERM,
 };
 
-struct lws_protocol_vhost_options pvo_opt = {
-    NULL, NULL, "default", ""
-};
+struct lws_protocol_vhost_options pvo_opt = {NULL, NULL, "default", ""};
 
-static struct lws_protocol_vhost_options pvo = {
-    NULL, &pvo_opt, "cce", ""
-};
+static struct lws_protocol_vhost_options pvo = {NULL, &pvo_opt, "cce", ""};
 
 static const struct lws_retry_bo retry = {
-    .secs_since_valid_ping = 3,
+    .secs_since_valid_ping   = 3,
     .secs_since_valid_hangup = 10,
 };
 
-
-int interrupted = 0;
+int  interrupted = 0;
 void sigint_handler() {
     interrupted = 1;
 }
 
 int main(int argc, const char **argv) {
-    struct lws_context *context;
+    struct lws_context              *context;
     struct lws_context_creation_info info;
 
     const char *p;
-    int logs = LLL_USER | LLL_ERR | LLL_WARN | LLL_NOTICE;
+    int         logs = LLL_USER | LLL_ERR | LLL_WARN | LLL_NOTICE;
 
     signal(SIGINT, sigint_handler);
 
     int port = 8080;
-    if ((p = lws_cmdline_option(argc, argv, "-p")))
-        port = atoi(p);
+    if ((p = lws_cmdline_option(argc, argv, "-p"))) port = atoi(p);
 
-    if ((p = lws_cmdline_option(argc, argv, "-d")))
-        logs = atoi(p);
+    if ((p = lws_cmdline_option(argc, argv, "-d"))) logs = atoi(p);
 
     lws_set_log_level(logs, NULL);
 
     memset(&info, 0, sizeof(info));
-    info.port = port;
+    info.port      = port;
+    info.pvo       = &pvo;
     info.protocols = protocols;
-    info.pvo = &pvo;
+
     info.retry_and_idle_policy = &retry;
-    info.options = LWS_SERVER_OPTION_VALIDATE_UTF8 |
+    info.options =
+        LWS_SERVER_OPTION_VALIDATE_UTF8 |
         LWS_SERVER_OPTION_HTTP_HEADERS_SECURITY_BEST_PRACTICES_ENFORCE;
 
     context = lws_create_context(&info);
@@ -81,7 +76,7 @@ int main(int argc, const char **argv) {
 void onopen(struct lws *wsi) {
     char client_name[50];
     char client_ip[50];
-    int fd = lws_get_socket_fd(wsi);
+    int  fd = lws_get_socket_fd(wsi);
     lws_get_peer_addresses(wsi, fd, client_name, 50, client_ip, 50);
     lwsl_warn("got new connection from: %p: %s%s", wsi, client_name, client_ip);
 }
@@ -89,17 +84,12 @@ void onopen(struct lws *wsi) {
 void onclose(struct lws *wsi) {
     char client_name[50];
     char client_ip[50];
-    int fd = lws_get_socket_fd(wsi);
+    int  fd = lws_get_socket_fd(wsi);
     lws_get_peer_addresses(wsi, fd, client_name, 50, client_ip, 50);
     lwsl_warn("connection closed: %p: %s%s", wsi, client_name, client_ip);
 }
 
-void onmessage(
-    struct lws *wsi,
-    const void *msg,
-    size_t len,
-    bool is_bin
-) {
+void onmessage(struct lws *wsi, const void *msg, size_t len, bool is_bin) {
     char rep[1024];
     sprintf(rep, "you sent %ld bytes", len);
 
