@@ -1,9 +1,9 @@
 #include <dotenv.h>
 
 static char *env_val_parse(const char *val) {
-    char *parsed = malloc(2048);
-    size_t len = strlen(val);
-    char *cpy = malloc(len + 1);
+    char  *parsed = malloc(2048);
+    size_t len    = strlen(val);
+    char  *cpy    = malloc(len + 1);
     strcpy(cpy, val);
 
     size_t i = 0;
@@ -47,7 +47,7 @@ static char *env_val_parse(const char *val) {
 
                     if (val[t] != '}') goto __evp_err;
 
-                    cpy[t] = '\0';
+                    cpy[t]    = '\0';
                     char *rep = getenv(cpy + j + 2);
                     if (rep) {
                         size_t l = strlen(rep);
@@ -61,7 +61,7 @@ static char *env_val_parse(const char *val) {
                     while (t < len && (isalpha(val[t]) || val[t] == '_'))
                         t += 1;
 
-                    cpy[t] = '\0';
+                    cpy[t]    = '\0';
                     char *rep = getenv(cpy + j + 1);
                     if (rep) {
                         size_t l = strlen(rep);
@@ -95,12 +95,12 @@ void load_env() {
     FILE *fp = fopen("./.env", "r");
     if (!fp) return;
 
-    char line[1024];
+    char  line[1024];
     char *name, *val, *parsed;
 
     while (fgets(line, 1023, fp)) {
         name = strtok(line, "=");
-        val = strtok(NULL, "\r\n");
+        val  = strtok(NULL, "\r\n");
         if (!val) continue;
         parsed = env_val_parse(val);
         if (!parsed) continue;
