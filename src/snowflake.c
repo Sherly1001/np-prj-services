@@ -44,3 +44,7 @@ static uint64_t snowflake_next_timestamp(uint64_t last_timestamp) {
     } while (cur <= last_timestamp);
     return cur;
 }
+
+uint64_t snowflake_id_to_msec(uint64_t id) {
+    return (id >> SF_TIMESTAMP_LEFT_OFFSET) + SF_START_TIMESTAMP;
+}
