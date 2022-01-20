@@ -3,6 +3,7 @@
 create table content_versions (
     id bigint not null primary key,
     file_id bigint references files(id) on delete cascade,
+    update_by bigint references users(id) on delete set null,
     content text
 );
 

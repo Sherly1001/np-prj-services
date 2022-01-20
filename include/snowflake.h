@@ -34,4 +34,7 @@ uint64_t snowflake_id(snowflake_t *);
 uint64_t snowflake_lock_id(snowflake_t *);
 uint64_t snowflake_timestamp();
 
+// return miliseconds
+uint64_t snowflake_id_to_msec(uint64_t id);
+
 #endif
