@@ -41,6 +41,24 @@ typedef struct {
 
 void db_file_drop(db_file_t *file);
 
+typedef struct db_user_pers {
+    uint64_t user_id;
+    uint64_t file_id;
+    uint16_t per_id;
+    bool     is_owner;
+
+    struct db_user_pers *next;
+} db_user_pers_t;
+
+void db_user_pers_drop(db_user_pers_t *pers);
+
+typedef struct {
+    uint16_t        everyone_can;
+    db_user_pers_t *user_pers;
+} db_file_pers_t;
+
+void db_file_pers_drop(db_file_pers_t *pers);
+
 void db_set_id_gen(snowflake_t *snf);
 
 PGresult *db_get_file_types(PGconn *conn);
@@ -53,12 +71,11 @@ db_file_t *db_file_get(PGconn *conn, uint64_t file_id, bool get_all_history);
 bool db_file_save(PGconn *conn, uint64_t file_id, const uint64_t user_id,
     const char *content);
 bool db_file_delete(PGconn *conn, uint64_t file_id);
-
-PGresult *db_file_set_per(
+bool db_file_set_per(
     PGconn *conn, uint64_t file_id, uint64_t user_id, int per_id);
-PGresult *db_file_get_pers(PGconn *conn, uint64_t file_id);
-PGresult *db_file_get_user_per(
-    PGconn *conn, uint64_t file_id, uint64_t user_id);
+
+db_file_pers_t *db_file_get_pers(PGconn *conn, uint64_t file_id);
+db_user_pers_t *db_file_get_user_per(PGconn *conn, uint64_t user_id);
 
 // raise error if failed
 db_user_t *db_user_add(PGconn *conn, const char *username, const char *passwd,

@@ -47,8 +47,6 @@ db_file_t *db_file_create(PGconn *conn, uint64_t owner, uint16_t everyone_can,
     sprintf(ids[3], "%ld", owner);
     sprintf(ids[4], "%d", everyone_can);
 
-    char cmd[1024 + strlen(content)];
-
     const char *params[5] = {
         ids[1],
         owner <= 0 ? NULL : ids[3],
@@ -212,13 +210,138 @@ bool db_file_delete(PGconn *conn, uint64_t file_id) {
     return true;
 }
 
-PGresult *db_file_set_per(
-    PGconn *conn, uint64_t file_id, uint64_t user_id, int per_id);
+bool db_file_set_per(
+    PGconn *conn, uint64_t file_id, uint64_t user_id, int per_id) {
 
-PGresult *db_file_get_pers(PGconn *conn, uint64_t file_id);
+    if (!__snf) {
+        raise_error(1001, "%s: not found id generator", __func__);
+        return false;
+    }
 
-PGresult *db_file_get_user_per(
-    PGconn *conn, uint64_t file_id, uint64_t user_id);
+    uint64_t id = snowflake_lock_id(__snf);
+
+    char ids[4][21];
+    sprintf(ids[0], "%ld", id);
+    sprintf(ids[1], "%ld", user_id);
+    sprintf(ids[2], "%ld", file_id);
+    sprintf(ids[3], "%d", per_id);
+
+    const char *params[] = {
+        ids[0],
+        ids[1],
+        ids[2],
+        ids[3],
+    };
+
+    PGresult *res = db_exec(conn,
+        "insert into user_file_permissions values ($1, $2, $3, $4)\n"
+        "on conflict(user_id, file_id) do update set permission_id = $4",
+        4, params, PGRES_COMMAND_OK, 910, __func__);
+    if (!res) return false;
+
+    PQclear(res);
+    return true;
+}
+
+db_file_pers_t *db_file_get_pers(PGconn *conn, uint64_t file_id) {
+    char fid[21];
+    sprintf(fid, "%ld", file_id);
+
+    const char *params[] = {fid};
+
+    PGresult *res =
+        db_exec(conn, "select owner, everyone_can from files where id = $1", 1,
+            params, PGRES_TUPLES_OK, 0, NULL);
+    if (!res) return NULL;
+
+    db_file_pers_t *pers = malloc(sizeof(db_file_pers_t));
+    pers->everyone_can   = atoi(PQgetvalue(res, 0, 1));
+    pers->user_pers      = malloc(sizeof(db_user_pers_t));
+
+    pers->user_pers->user_id  = atol(PQgetvalue(res, 0, 0));
+    pers->user_pers->file_id  = file_id;
+    pers->user_pers->per_id   = 3;
+    pers->user_pers->is_owner = true;
+    pers->user_pers->next     = NULL;
+
+    PQclear(res);
+    res = db_exec(conn,
+        "select user_id, permission_id, owner from user_file_permissions ufp\n"
+        "inner join files on files.id = ufp.file_id where ufp.file_id = $1",
+        1, params, PGRES_TUPLES_OK, 0, NULL);
+    if (!res) {
+        db_file_pers_drop(pers);
+        PQclear(res);
+        return NULL;
+    }
+
+    int rows = PQntuples(res);
+    for (int i = 0; i < rows; ++i) {
+        db_user_pers_t *u_pers = malloc(sizeof(db_user_pers_t));
+
+        u_pers->file_id  = file_id;
+        u_pers->user_id  = atol(PQgetvalue(res, i, 0));
+        u_pers->per_id   = atoi(PQgetvalue(res, i, 1));
+        u_pers->is_owner = !PQgetisnull(res, i, 2) &&
+                           atol(PQgetvalue(res, i, 2)) == (long)u_pers->user_id;
+
+        u_pers->next    = pers->user_pers;
+        pers->user_pers = u_pers;
+    }
+
+    PQclear(res);
+    return pers;
+}
+
+db_user_pers_t *db_file_get_user_per(PGconn *conn, uint64_t user_id) {
+    char uid[21];
+    sprintf(uid, "%ld", user_id);
+
+    const char *params[] = {uid};
+
+    PGresult *res = db_exec(conn,
+        "select file_id, permission_id, owner from user_file_permissions ufp\n"
+        "inner join files on files.id = ufp.file_id where ufp.user_id = $1",
+        1, params, PGRES_TUPLES_OK, 0, NULL);
+    if (!res) return NULL;
+
+    db_user_pers_t *pers = NULL;
+
+    int rows = PQntuples(res);
+    for (int i = 0; i < rows; ++i) {
+        db_user_pers_t *u_pers = malloc(sizeof(db_user_pers_t));
+
+        u_pers->user_id  = user_id;
+        u_pers->file_id  = atol(PQgetvalue(res, i, 0));
+        u_pers->per_id   = atoi(PQgetvalue(res, i, 1));
+        u_pers->is_owner = !PQgetisnull(res, i, 2) &&
+                           atol(PQgetvalue(res, i, 2)) == (long)user_id;
+
+        u_pers->next = pers;
+        pers         = u_pers;
+    }
+
+    PQclear(res);
+    res = db_exec(conn, "select id from files where owner = $1", 1,
+        params, PGRES_TUPLES_OK, 0, NULL);
+    if (res) {
+        int rows = PQntuples(res);
+        for (int i = 0; i < rows; ++i) {
+            db_user_pers_t *u_pers = malloc(sizeof(db_user_pers_t));
+
+            u_pers->user_id  = user_id;
+            u_pers->file_id  = atol(PQgetvalue(res, i, 0));
+            u_pers->per_id   = 3;
+            u_pers->is_owner = true;
+
+            u_pers->next = pers;
+            pers         = u_pers;
+        }
+        PQclear(res);
+    }
+
+    return pers;
+}
 
 db_user_t *db_user_add(PGconn *conn, const char *username, const char *passwd,
     const char *email, const char *avatar_url) {
@@ -356,4 +479,16 @@ void db_content_version_drop(db_content_version_t *cv) {
     db_content_version_drop(cv->prev);
     free(cv->content);
     free(cv);
+}
+
+void db_file_pers_drop(db_file_pers_t *pers) {
+    if (!pers) return;
+    db_user_pers_drop(pers->user_pers);
+    free(pers);
+}
+
+void db_user_pers_drop(db_user_pers_t *pers) {
+    if (!pers) return;
+    db_user_pers_drop(pers->next);
+    free(pers);
 }
