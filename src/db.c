@@ -193,6 +193,25 @@ bool db_file_save(PGconn *conn, uint64_t file_id, const uint64_t user_id,
     return true;
 }
 
+bool db_file_delete(PGconn *conn, uint64_t file_id) {
+    char fid[21];
+    sprintf(fid, "%ld", file_id);
+    const char *params[] = {fid};
+
+    PGresult *res = db_exec(conn, "delete from files where id = $1", 1, params,
+        PGRES_COMMAND_OK, 908, __func__);
+    if (!res) return false;
+
+    if (atoi(PQcmdTuples(res)) != 1) {
+        raise_error(909, "%s: file %ld not exist", __func__, file_id);
+        PQclear(res);
+        return false;
+    }
+
+    PQclear(res);
+    return true;
+}
+
 PGresult *db_file_set_per(
     PGconn *conn, uint64_t file_id, uint64_t user_id, int per_id);
 
