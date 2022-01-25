@@ -1,5 +1,11 @@
 #include <ws.h>
 
+void files_info_drop(void *ff) {
+    struct files_info *f = ff;
+    db_file_drop(f->file);
+    vec_destroy(f->wsis);
+}
+
 void msg_destroy(void *msg) {
     struct my_msg *m = msg;
     free(m->payload);
@@ -60,16 +66,19 @@ int my_ws_callback(struct lws *wsi, enum lws_callback_reasons reason,
         case LWS_CALLBACK_PROTOCOL_INIT:
             vhd = lws_protocol_vh_priv_zalloc(
                 lws_get_vhost(wsi), prl, sizeof(struct my_per_vhost_data));
-            vhd->ctx   = lws_get_context(wsi);
-            vhd->prl   = prl;
-            vhd->vhost = lws_get_vhost(wsi);
+            vhd->pss_list =
+                vec_new_type(struct my_per_session_data *, NULL, NULL, NULL);
+            vhd->files =
+                vec_new_type(struct files_info, NULL, NULL, files_info_drop);
             break;
 
         case LWS_CALLBACK_PROTOCOL_DESTROY:
+            vec_destroy(vhd->files);
+            vec_destroy(vhd->pss_list);
             break;
 
         case LWS_CALLBACK_ESTABLISHED:
-            lws_ll_fwd_insert(pss, pss_list, vhd->pss_list);
+            vec_add(vhd->pss_list, &pss);
             pss->wsi       = wsi;
             pss->read_ring = lws_ring_create(
                 sizeof(struct my_msg), MY_RING_DEPTH, msg_destroy);
@@ -82,10 +91,9 @@ int my_ws_callback(struct lws *wsi, enum lws_callback_reasons reason,
             break;
 
         case LWS_CALLBACK_CLOSED:
-            lws_ll_fwd_remove(
-                struct my_per_session_data, pss_list, pss, vhd->pss_list);
             lws_ring_destroy(pss->read_ring);
             lws_ring_destroy(pss->write_ring);
+            vec_remove(vhd->pss_list, vec_index_of(vhd->pss_list, &pss));
 
             if (mws && mws->onclose) {
                 mws->onclose(wsi);
@@ -148,8 +156,16 @@ int my_ws_callback(struct lws *wsi, enum lws_callback_reasons reason,
 size_t my_ws_send(struct lws *wsi, const void *msg, size_t len, bool is_bin) {
     struct my_per_vhost_data *vhd =
         lws_protocol_vh_priv_get(lws_get_vhost(wsi), lws_get_protocol(wsi));
-    struct my_per_session_data *pss = vhd->pss_list;
-    while (pss && pss->wsi != wsi) pss = pss->pss_list;
+    struct my_per_session_data *pss = NULL;
+
+    for (size_t i = 0; i < vhd->pss_list->len; ++i) {
+        struct my_per_session_data **ps = vec_get(vhd->pss_list, i);
+        if ((*ps)->wsi == wsi) {
+            pss = *ps;
+            break;
+        }
+    }
+
     if (!pss) return -1;
 
     struct my_msg amsg;
@@ -205,13 +221,12 @@ size_t my_ws_send_all(struct lws *wsi, struct lws *except, const void *msg,
     struct my_per_vhost_data   *vhd =
         lws_protocol_vh_priv_get(lws_get_vhost(wsi), prl);
 
-    lws_start_foreach_llp(struct my_per_session_data **, ppss, vhd->pss_list) {
-        if ((*ppss)->wsi != except) {
-            size_t n = my_ws_send((*ppss)->wsi, msg, len, is_bin);
-            if (n < len) return n;
-        }
+    for (size_t i = 0; i < vhd->pss_list->len; ++i) {
+        struct my_per_session_data **ppss = vec_get(vhd->pss_list, i);
+        if ((*ppss)->wsi == except) continue;
+        size_t n = my_ws_send((*ppss)->wsi, msg, len, is_bin);
+        if (n < len) return n;
     }
-    lws_end_foreach_llp(ppss, pss_list);
 
     return len;
 }

@@ -19,19 +19,24 @@ struct my_msg {
 };
 
 struct my_per_session_data {
-    struct my_per_session_data *pss_list;
-    struct lws                 *wsi;
-    struct lws_ring            *read_ring;
-    struct lws_ring            *write_ring;
-    uint32_t                    read_tail;
-    uint32_t                    write_tail;
+    struct lws      *wsi;
+    struct lws_ring *read_ring;
+    struct lws_ring *write_ring;
+    uint32_t         read_tail;
+    uint32_t         write_tail;
+
+    db_user_t *user;
+    db_file_t *file;
+};
+
+struct files_info {
+    db_file_t *file;
+    vec_t     *wsis;
 };
 
 struct my_per_vhost_data {
-    struct lws_context         *ctx;
-    struct lws_vhost           *vhost;
-    const struct lws_protocols *prl;
-    struct my_per_session_data *pss_list;
+    vec_t *pss_list;
+    vec_t *files;
 };
 
 typedef void (*onopen_t)(struct lws *wsi);

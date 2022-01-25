@@ -322,8 +322,8 @@ db_user_pers_t *db_file_get_user_per(PGconn *conn, uint64_t user_id) {
     }
 
     PQclear(res);
-    res = db_exec(conn, "select id from files where owner = $1", 1,
-        params, PGRES_TUPLES_OK, 0, NULL);
+    res = db_exec(conn, "select id from files where owner = $1", 1, params,
+        PGRES_TUPLES_OK, 0, NULL);
     if (res) {
         int rows = PQntuples(res);
         for (int i = 0; i < rows; ++i) {
