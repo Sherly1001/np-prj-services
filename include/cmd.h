@@ -8,13 +8,10 @@
 #include <stdarg.h>
 #include <json-c/json.h>
 
+#include <bool.h>
 #include <error.h>
 
 typedef const char *cmd_type_t;
-
-typedef uint8_t bool;
-#define true 1
-#define false 0
 
 #define CMD_IS_TYPE_OF(type, of) (strcmp(type, of) == 0)
 

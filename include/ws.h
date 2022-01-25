@@ -1,11 +1,14 @@
+#ifndef __WS_H__
+#define __WS_H__
+
 #include <libwebsockets.h>
+
+#include <bool.h>
+#include <vec.h>
+#include <db.h>
 
 #define MY_RING_DEPTH 4096
 #define MY_PSS_SIZE   2048
-
-typedef uint8_t bool;
-#define true 1
-#define false 0
 
 struct my_msg {
     void  *payload;
@@ -55,3 +58,5 @@ size_t my_ws_send_all(struct lws *wsi, struct lws *except, const void *msg,
         "cce", my_ws_callback, sizeof(struct my_per_session_data),             \
             MY_PSS_SIZE, 0, &ws, 0                                             \
     }
+
+#endif

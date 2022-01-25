@@ -4,9 +4,9 @@
 #include <stdint.h>
 #include <libpq-fe.h>
 
+#include <bool.h>
 #include <error.h>
 #include <snowflake.h>
-#include <ws.h> // for bool type
 
 typedef struct {
     uint64_t id;
