@@ -9,10 +9,11 @@
 void onopen(struct lws *wsi);
 void onclose(struct lws *wsi);
 void onmessage(struct lws *wsi, const void *msg, size_t len, bool is_bin);
+void onrequest(struct lws *wsi, const char *path, const char *body, size_t len);
 struct my_ws ws = {onopen, onclose, onmessage};
 
 static struct lws_protocols protocols[] = {
-    {"http", lws_callback_http_dummy, 0, 0, 0, NULL, 0},
+    MY_HTTP_PROTOCOL(onrequest),
     MY_WS_PROTOCOL(ws),
     LWS_PROTOCOL_LIST_TERM,
 };
@@ -36,7 +37,7 @@ int main(int argc, const char **argv) {
     struct lws_context_creation_info info;
 
     const char *p;
-    int         logs = LLL_USER | LLL_ERR | LLL_WARN | LLL_NOTICE;
+    int         logs = LLL_USER | LLL_ERR | LLL_WARN;
 
     signal(SIGINT, sigint_handler);
 
@@ -120,4 +121,27 @@ void onmessage(struct lws *wsi, const void *msg, size_t len, bool is_bin) {
     }
 
     my_ws_send(wsi, rep, strlen(rep), false);
+}
+
+void onrequest(
+    struct lws *wsi, const char *path, const char *body, size_t len) {
+    struct json_object *obj = json_object_new_object();
+
+    struct json_object *jbody = json_tokener_parse(body ? body : "");
+
+    if (jbody) {
+        json_object_object_add(obj, "body", jbody);
+    } else {
+        json_object_object_add(
+            obj, "error", json_object_new_string("the body is not json"));
+    }
+
+    json_object_object_add(
+        obj, "method", json_object_new_string(body ? "post" : "get"));
+    json_object_object_add(obj, "path", json_object_new_string(path));
+    json_object_object_add(obj, "len", json_object_new_int(len));
+
+    if (my_http_send_json(wsi, 200, obj) <= 0) {
+        lwsl_err("send err");
+    };
 }
