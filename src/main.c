@@ -125,23 +125,34 @@ void onmessage(struct lws *wsi, const void *msg, size_t len, bool is_bin) {
 
 void onrequest(
     struct lws *wsi, const char *path, const char *body, size_t len) {
-    struct json_object *obj = json_object_new_object();
+    *(char *)&body[len] = '\0';
+    int code            = 0;
 
+    struct json_object *obj   = json_object_new_object();
     struct json_object *jbody = json_tokener_parse(body ? body : "");
 
-    if (jbody) {
-        json_object_object_add(obj, "body", jbody);
-    } else {
+    if (!jbody) {
+        json_object_object_add(obj, "stt", json_object_new_string("error"));
         json_object_object_add(
-            obj, "error", json_object_new_string("the body is not json"));
+            obj, "message", json_object_new_string("the body is not json"));
+        my_http_send_json(wsi, 422, obj);
+        return;
     }
 
-    json_object_object_add(
-        obj, "method", json_object_new_string(body ? "post" : "get"));
-    json_object_object_add(obj, "path", json_object_new_string(path));
-    json_object_object_add(obj, "len", json_object_new_int(len));
+    if (strcmp(path, "/users/login") == 0) {
+        json_object_object_add(obj, "stt", json_object_new_string("ok"));
+        json_object_object_add(obj, "data", json_object_new_string("data"));
+        code = 200;
+    } else if (strcmp(path, "/users/signin") == 0) {
+        json_object_object_add(obj, "stt", json_object_new_string("ok"));
+        json_object_object_add(obj, "data", json_object_new_string("data"));
+        code = 200;
+    } else {
+        json_object_object_add(obj, "stt", json_object_new_string("error"));
+        json_object_object_add(
+            obj, "message", json_object_new_string("not found resource"));
+        code = 404;
+    }
 
-    if (my_http_send_json(wsi, 200, obj) <= 0) {
-        lwsl_err("send err");
-    };
+    my_http_send_json(wsi, code, obj);
 }
