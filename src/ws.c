@@ -3,7 +3,7 @@
 void file_info_drop(void *ff) {
     struct file_info *f = ff;
     db_file_drop(f->file);
-    vec_destroy(f->wsis);
+    vec_drop(f->wsis);
 }
 
 void msg_destroy(void *msg) {
@@ -68,14 +68,14 @@ int my_ws_callback(struct lws *wsi, enum lws_callback_reasons reason,
             vhd = lws_protocol_vh_priv_zalloc(
                 lws_get_vhost(wsi), prl, sizeof(struct my_per_vhost_data));
             vhd->pss_list =
-                vec_new_type(struct my_per_session_data *, NULL, NULL, NULL);
+                vec_new_r(struct my_per_session_data *, NULL, NULL, NULL);
             vhd->files =
-                vec_new_type(struct file_info, NULL, NULL, file_info_drop);
+                vec_new_r(struct file_info, NULL, NULL, file_info_drop);
             break;
 
         case LWS_CALLBACK_PROTOCOL_DESTROY:
-            vec_destroy(vhd->files);
-            vec_destroy(vhd->pss_list);
+            vec_drop(vhd->files);
+            vec_drop(vhd->pss_list);
             break;
 
         case LWS_CALLBACK_ESTABLISHED:
@@ -94,7 +94,7 @@ int my_ws_callback(struct lws *wsi, enum lws_callback_reasons reason,
         case LWS_CALLBACK_CLOSED:
             lws_ring_destroy(pss->read_ring);
             lws_ring_destroy(pss->write_ring);
-            vec_remove(vhd->pss_list, vec_index_of(vhd->pss_list, &pss));
+            vec_remove_by(vhd->pss_list, &pss);
 
             if (mws && mws->onclose) {
                 mws->onclose(wsi);
@@ -213,9 +213,10 @@ size_t my_ws_send_all(struct lws *wsi, struct lws *except, const void *msg,
         lws_protocol_vh_priv_get(lws_get_vhost(wsi), prl);
 
     for (size_t i = 0; i < vhd->pss_list->len; ++i) {
-        struct my_per_session_data **ppss = vec_get(vhd->pss_list, i);
-        if ((*ppss)->wsi == except) continue;
-        size_t n = my_ws_send((*ppss)->wsi, msg, len, is_bin);
+        struct my_per_session_data *pss =
+            vec_get_r(struct my_per_session_data *, vhd->pss_list, i);
+        if (pss->wsi == except) continue;
+        size_t n = my_ws_send(pss->wsi, msg, len, is_bin);
         if (n < len) return n;
     }
 
