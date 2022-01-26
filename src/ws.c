@@ -239,10 +239,6 @@ int my_http_callback(struct lws *wsi, enum lws_callback_reasons reason,
     int    flags;
     size_t n;
 
-    char out[10240];
-    strncpy(out, in, len);
-    out[len] = 0;
-
     switch (reason) {
         case LWS_CALLBACK_HTTP:
             pss->path = malloc(len + 1);
