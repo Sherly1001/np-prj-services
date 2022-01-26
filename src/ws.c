@@ -6,30 +6,27 @@ void file_info_drop(void *ff) {
     vec_drop(f->wsis);
 }
 
-void msg_destroy(void *msg) {
+void msg_drop(void *msg) {
     struct my_msg *m = msg;
     free(m->payload);
     m->payload = NULL;
     m->len     = 0;
 }
 
-void *get_all_payload(
-    struct lws_ring *ring, uint32_t *tail, size_t *len_o, int *type_o) {
-    void    *payload  = NULL;
-    uint32_t old_tail = *tail;
-    size_t   len      = 0;
+void *get_all_payload(vec_t *vec, size_t *len_o, int *type_o) {
+    void  *payload = NULL;
+    size_t len     = 0;
 
-    const struct my_msg *pmsg;
+    const struct my_msg *pmsg = vec_get(vec, 0);
 
-    if ((pmsg = lws_ring_get_element(ring, &old_tail))) {
+    if (pmsg) {
         *type_o = pmsg->is_bin;
     } else {
         return NULL;
     }
 
-    old_tail = *tail;
-    while ((pmsg = lws_ring_get_element(ring, &old_tail))) {
-        lws_ring_consume(ring, &old_tail, NULL, 1);
+    for (size_t idx = 0; idx < vec->len; ++idx) {
+        pmsg = vec_get(vec, idx);
         len += pmsg->len;
     }
 
@@ -37,10 +34,10 @@ void *get_all_payload(
     *len_o  = len;
 
     len = 0;
-    while ((pmsg = lws_ring_get_element(ring, tail))) {
+    for (size_t idx = 0; idx < vec->len; ++idx) {
+        pmsg = vec_get(vec, idx);
         memcpy(payload + len, pmsg->payload + LWS_PRE, pmsg->len);
         len += pmsg->len;
-        lws_ring_consume(ring, tail, NULL, 1);
     }
 
     return payload;
@@ -80,11 +77,9 @@ int my_ws_callback(struct lws *wsi, enum lws_callback_reasons reason,
 
         case LWS_CALLBACK_ESTABLISHED:
             vec_add(vhd->pss_list, &pss);
-            pss->wsi       = wsi;
-            pss->read_ring = lws_ring_create(
-                sizeof(struct my_msg), MY_RING_DEPTH, msg_destroy);
-            pss->write_ring = lws_ring_create(
-                sizeof(struct my_msg), MY_RING_DEPTH, msg_destroy);
+            pss->wsi     = wsi;
+            pss->v_read  = vec_new_r(struct my_msg, NULL, NULL, msg_drop);
+            pss->v_write = vec_new_r(struct my_msg, NULL, NULL, msg_drop);
 
             if (mws && mws->onopen) {
                 mws->onopen(wsi);
@@ -92,8 +87,8 @@ int my_ws_callback(struct lws *wsi, enum lws_callback_reasons reason,
             break;
 
         case LWS_CALLBACK_CLOSED:
-            lws_ring_destroy(pss->read_ring);
-            lws_ring_destroy(pss->write_ring);
+            vec_drop(pss->v_read);
+            vec_drop(pss->v_write);
             vec_remove_by(vhd->pss_list, &pss);
 
             if (mws && mws->onclose) {
@@ -102,7 +97,7 @@ int my_ws_callback(struct lws *wsi, enum lws_callback_reasons reason,
             break;
 
         case LWS_CALLBACK_SERVER_WRITEABLE:
-            pmsg = lws_ring_get_element(pss->write_ring, &pss->write_tail);
+            pmsg = vec_get(pss->v_write, 0);
             if (!pmsg) break;
 
             flags = lws_write_ws_flags(
@@ -111,9 +106,8 @@ int my_ws_callback(struct lws *wsi, enum lws_callback_reasons reason,
             n = lws_write(wsi, pmsg->payload + LWS_PRE, pmsg->len, flags);
             if (n < pmsg->len) return 1;
 
-            lws_ring_consume(pss->write_ring, &pss->write_tail, NULL, 1);
-            if (lws_ring_get_element(pss->write_ring, &pss->write_tail))
-                lws_callback_on_writable(wsi);
+            vec_remove(pss->v_write, 0);
+            if (pss->v_write->len > 0) lws_callback_on_writable(wsi);
             break;
 
         case LWS_CALLBACK_RECEIVE:
@@ -122,19 +116,12 @@ int my_ws_callback(struct lws *wsi, enum lws_callback_reasons reason,
             msg.is_last  = (bool)lws_is_final_fragment(wsi);
             msg.is_bin   = (bool)lws_frame_is_binary(wsi);
             msg.payload  = malloc(LWS_PRE + len);
-            if (!msg.payload) {
-                lwsl_err("malloc fail");
-                break;
-            }
             memcpy(msg.payload + LWS_PRE, in, len);
-
-            if (!lws_ring_insert(pss->read_ring, &msg, 1)) {
-                return -1;
-            }
+            vec_add(pss->v_read, &msg);
 
             if (msg.is_last) {
-                all_payload = get_all_payload(pss->read_ring, &pss->read_tail,
-                    &all_payload_len, &all_payload_type);
+                all_payload = get_all_payload(
+                    pss->v_read, &all_payload_len, &all_payload_type);
 
                 if (mws && mws->onmessage) {
                     mws->onmessage(
@@ -142,6 +129,8 @@ int my_ws_callback(struct lws *wsi, enum lws_callback_reasons reason,
                 }
 
                 free(all_payload);
+                vec_drop(pss->v_read);
+                pss->v_read = vec_new_r(struct my_msg, NULL, NULL, msg_drop);
             }
 
             break;
@@ -160,7 +149,6 @@ size_t my_ws_send(struct lws *wsi, const void *msg, size_t len, bool is_bin) {
     if (!pss) return -1;
 
     struct my_msg amsg;
-    size_t        n;
 
     if (len <= MY_PSS_SIZE) {
         amsg.is_first = true;
@@ -169,8 +157,7 @@ size_t my_ws_send(struct lws *wsi, const void *msg, size_t len, bool is_bin) {
         amsg.len      = len;
         amsg.payload  = malloc(len + LWS_PRE);
         memcpy(amsg.payload + LWS_PRE, msg, len);
-        n = lws_ring_insert(pss->write_ring, &amsg, 1);
-        if (n < 1) return n;
+        vec_add(pss->v_write, &amsg);
         lws_callback_on_writable(wsi);
         return len;
     }
@@ -183,23 +170,20 @@ size_t my_ws_send(struct lws *wsi, const void *msg, size_t len, bool is_bin) {
     amsg.len      = MY_PSS_SIZE;
     amsg.payload  = malloc(MY_PSS_SIZE + LWS_PRE);
     memcpy(amsg.payload + LWS_PRE, msg, MY_PSS_SIZE);
-    n = lws_ring_insert(pss->write_ring, &amsg, 1);
-    if (n < 1) return n;
+    vec_add(pss->v_write, &amsg);
 
     amsg.is_first = false;
     for (index = MY_PSS_SIZE; index < len - MY_PSS_SIZE; index += MY_PSS_SIZE) {
         amsg.payload = malloc(MY_PSS_SIZE + LWS_PRE);
         memcpy(amsg.payload + LWS_PRE, msg + index, MY_PSS_SIZE);
-        n = lws_ring_insert(pss->write_ring, &amsg, 1);
-        if (n < 1) return index;
+        vec_add(pss->v_write, &amsg);
     }
 
     amsg.is_last = true;
     amsg.len     = len - index;
     amsg.payload = malloc(len - index + LWS_PRE);
     memcpy(amsg.payload + LWS_PRE, msg + index, len - index);
-    n = lws_ring_insert(pss->write_ring, &amsg, 1);
-    if (n < 1) return index;
+    vec_add(pss->v_write, &amsg);
 
     lws_callback_on_writable(wsi);
 
@@ -245,10 +229,8 @@ int my_http_callback(struct lws *wsi, enum lws_callback_reasons reason,
             pss->path = malloc(len + 1);
             memcpy(pss->path, in, len);
             pss->path[len] = '\0';
-            pss->read_ring = lws_ring_create(
-                sizeof(struct my_msg), MY_RING_DEPTH, msg_destroy);
-            pss->write_ring = lws_ring_create(
-                sizeof(struct my_msg), MY_RING_DEPTH, msg_destroy);
+            pss->v_read    = vec_new_r(struct my_msg, NULL, NULL, msg_drop);
+            pss->v_write   = vec_new_r(struct my_msg, NULL, NULL, msg_drop);
 
             if (lws_hdr_total_length(wsi, WSI_TOKEN_GET_URI) && onrequest) {
                 onrequest(wsi, pss->path, NULL, 0);
@@ -259,16 +241,12 @@ int my_http_callback(struct lws *wsi, enum lws_callback_reasons reason,
             msg.len     = len;
             msg.payload = malloc(LWS_PRE + len);
             memcpy(msg.payload + LWS_PRE, in, len);
-
-            if (!lws_ring_insert(pss->read_ring, &msg, 1)) {
-                return -1;
-            }
+            vec_add(pss->v_read, &msg);
             break;
 
         case LWS_CALLBACK_HTTP_BODY_COMPLETION:
             if (onrequest) {
-                body = get_all_payload(
-                    pss->read_ring, &pss->read_tail, &body_len, &body_type);
+                body = get_all_payload(pss->v_read, &body_len, &body_type);
                 onrequest(wsi, pss->path, body, body_len);
                 free(body);
             }
@@ -276,12 +254,12 @@ int my_http_callback(struct lws *wsi, enum lws_callback_reasons reason,
 
         case LWS_CALLBACK_CLOSED_HTTP:
             free(pss->path);
-            lws_ring_destroy(pss->read_ring);
-            lws_ring_destroy(pss->write_ring);
+            vec_drop(pss->v_read);
+            vec_drop(pss->v_write);
             break;
 
         case LWS_CALLBACK_HTTP_WRITEABLE:
-            pmsg = lws_ring_get_element(pss->write_ring, &pss->write_tail);
+            pmsg = vec_get(pss->v_write, 0);
             if (!pmsg) break;
 
             flags = lws_write_ws_flags(
@@ -289,8 +267,8 @@ int my_http_callback(struct lws *wsi, enum lws_callback_reasons reason,
             n = lws_write(wsi, pmsg->payload + LWS_PRE, pmsg->len, flags);
             if (n < pmsg->len) return 1;
 
-            lws_ring_consume(pss->write_ring, &pss->write_tail, NULL, 1);
-            if (lws_ring_get_element(pss->write_ring, &pss->write_tail)) {
+            vec_remove(pss->v_write, 0);
+            if (pss->v_write->len > 0) {
                 lws_callback_on_writable(wsi);
             } else {
                 lws_close_free_wsi(wsi, LWS_CLOSE_STATUS_NORMAL, NULL);
@@ -309,14 +287,15 @@ size_t my_http_send_json(struct lws *wsi, int stt, struct json_object *json) {
     const char *body =
         json_object_to_json_string_ext(json, JSON_C_TO_STRING_PLAIN);
     size_t body_len = strlen(body);
-    size_t rs       = 0;
 
     char headers[1024], *p = headers;
 
     if (lws_add_http_header_status(
             wsi, stt, (unsigned char **)&p, (unsigned char *)headers + 1024)) {
-        rs = 0;
-        goto __send_exit;
+
+        lws_callback_on_writable(wsi);
+        free((char *)body);
+        return 0;
     }
     sprintf(p,
         "Access-Control-Allow-Origin: *\r\n"
@@ -332,13 +311,9 @@ size_t my_http_send_json(struct lws *wsi, int stt, struct json_object *json) {
     amsg.len      = strlen(headers);
     amsg.payload  = malloc(LWS_PRE + amsg.len);
     memcpy(amsg.payload + LWS_PRE, headers, amsg.len);
+    vec_add(pss->v_write, &amsg);
 
-    if (lws_ring_insert(pss->write_ring, &amsg, 1) < 1) {
-        rs = 0;
-        goto __send_exit;
-    }
-
-    size_t index = 0, n;
+    size_t index = 0;
 
     amsg.is_first = false;
     amsg.len      = MY_PSS_SIZE;
@@ -346,27 +321,16 @@ size_t my_http_send_json(struct lws *wsi, int stt, struct json_object *json) {
          index += MY_PSS_SIZE) {
         amsg.payload = malloc(MY_PSS_SIZE + LWS_PRE);
         memcpy(amsg.payload + LWS_PRE, body + index, MY_PSS_SIZE);
-        n = lws_ring_insert(pss->write_ring, &amsg, 1);
-        if (n < 1) {
-            rs = index;
-            goto __send_exit;
-        }
+        vec_add(pss->v_write, &amsg);
     }
 
     amsg.is_last = true;
     amsg.len     = body_len - index;
     amsg.payload = malloc(body_len - index + LWS_PRE);
     memcpy(amsg.payload + LWS_PRE, body + index, body_len - index);
-    n = lws_ring_insert(pss->write_ring, &amsg, 1);
-    if (n < 1) {
-        rs = index;
-        goto __send_exit;
-    }
+    vec_add(pss->v_write, &amsg);
 
-    rs = body_len;
-
-__send_exit:
     lws_callback_on_writable(wsi);
     free((char *)body);
-    return rs;
+    return body_len;
 }

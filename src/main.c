@@ -125,6 +125,9 @@ void onmessage(struct lws *wsi, const void *msg, size_t len, bool is_bin) {
 
 void onrequest(
     struct lws *wsi, const char *path, const char *body, size_t len) {
+
+    lwsl_warn("new request: %p: %s, %lu bytes", wsi, path, len);
+
     *(char *)&body[len] = '\0';
     int code            = 0;
 

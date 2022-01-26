@@ -20,22 +20,18 @@ struct my_msg {
 };
 
 struct my_per_session_data {
-    struct lws      *wsi;
-    struct lws_ring *read_ring;
-    struct lws_ring *write_ring;
-    uint32_t         read_tail;
-    uint32_t         write_tail;
+    struct lws *wsi;
 
+    vec_t     *v_read;  // Vec<struct my_msg>
+    vec_t     *v_write; // Vec<struct my_msg>
     db_user_t *user;
     db_file_t *file;
 };
 
 struct my_http_ss {
-    char            *path;
-    struct lws_ring *read_ring;
-    struct lws_ring *write_ring;
-    uint32_t         read_tail;
-    uint32_t         write_tail;
+    char  *path;
+    vec_t *v_read;  // Vec<struct my_msg>
+    vec_t *v_write; // Vec<struct my_msg>
 };
 
 struct file_info {
