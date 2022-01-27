@@ -93,19 +93,33 @@ int main(int argc, const char **argv) {
 }
 
 void onopen(struct lws *wsi) {
-    char client_name[50];
-    char client_ip[50];
-    int  fd = lws_get_socket_fd(wsi);
-    lws_get_peer_addresses(wsi, fd, client_name, 50, client_ip, 50);
-    lwsl_warn("got new connection from: %p: %s%s", wsi, client_name, client_ip);
+    struct my_per_session_data *pss = lws_wsi_user(wsi);
+
+    char path[1024], token[1024];
+    path[0]  = '\0';
+    token[0] = '\0';
+
+    lws_hdr_copy(wsi, path, 1023, WSI_TOKEN_GET_URI);
+    lws_get_urlarg_by_name(wsi, "token", token, 1023);
+
+    uint64_t uid = 0;
+    if (jwt_decode(token, secret_key, &uid)) {
+        pss->user = db_user_get(conn, uid, NULL);
+    } else {
+        pss->user = NULL;
+    }
+
+    lwsl_warn("new connection: %p: path: %s: user: %s", wsi, path,
+        pss->user ? pss->user->username : NULL);
 }
 
 void onclose(struct lws *wsi) {
-    char client_name[50];
-    char client_ip[50];
-    int  fd = lws_get_socket_fd(wsi);
-    lws_get_peer_addresses(wsi, fd, client_name, 50, client_ip, 50);
-    lwsl_warn("connection closed: %p: %s%s", wsi, client_name, client_ip);
+    struct my_per_session_data *pss = lws_wsi_user(wsi);
+
+    lwsl_warn("connection closed: %p: user: %s", wsi,
+        pss->user ? pss->user->username : NULL);
+
+    db_user_drop(pss->user);
 }
 
 void onmessage(struct lws *wsi, const void *msg, size_t len, bool is_bin) {
@@ -144,7 +158,7 @@ void onmessage(struct lws *wsi, const void *msg, size_t len, bool is_bin) {
 void onrequest(
     struct lws *wsi, const char *path, const char *body, size_t len) {
 
-    lwsl_warn("new request: %p: %s, %lu bytes", wsi, path, len);
+    lwsl_warn("new request: %p: %lu bytes, %s", wsi, len, path);
 
     body && (*(char *)&body[len] = '\0');
 
