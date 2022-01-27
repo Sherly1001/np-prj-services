@@ -4,6 +4,7 @@ project(nps C)
 
 find_package(libwebsockets CONFIG REQUIRED)
 find_package(json-c CONFIG REQUIRED)
+find_package(OpenSSL REQUIRED)
 find_package(PostgreSQL REQUIRED)
 
 find_library(LWS_LIBS websockets REQUIRED)
@@ -17,12 +18,14 @@ set(CMAKE_C_FLAGS "-Wall -Wextra")
 set(LIBS
     ${LWS_LIBS}
     ${JSONC_LIBS}
+    ${OPENSSL_LIBRARIES}
     ${PostgreSQL_LIBRARY}
 )
 
 include_directories(include
     ${LWS_INC}
     ${JSONC_INC}
+    ${OPENSSL_INCLUDE_DIR}
     ${PostgreSQL_INCLUDE_DIR}
 )
 file(GLOB_RECURSE SRC_FILES "${SRC}/*.c")
