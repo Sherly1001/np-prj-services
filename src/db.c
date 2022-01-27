@@ -156,12 +156,12 @@ db_file_t *db_file_get(PGconn *conn, uint64_t file_id, bool get_all_history) {
     return file;
 }
 
-bool db_file_save(PGconn *conn, uint64_t file_id, const uint64_t user_id,
+uint64_t db_file_save(PGconn *conn, uint64_t file_id, const uint64_t user_id,
     const char *content) {
 
     if (!__snf) {
         raise_error(1001, "%s: not found id generator", __func__);
-        return false;
+        return 0;
     }
 
     uint64_t ver_id = snowflake_lock_id(__snf);
@@ -181,15 +181,15 @@ bool db_file_save(PGconn *conn, uint64_t file_id, const uint64_t user_id,
     PGresult *res =
         db_exec(conn, "insert into content_versions values ($1, $2, $3, $4)", 4,
             params, PGRES_COMMAND_OK, 306, __func__);
-    if (!res) return false;
+    if (!res) return 0;
     PQclear(res);
 
     res = db_exec(conn, "update files set current_version = $1 where id = $2",
         2, params, PGRES_COMMAND_OK, 307, __func__);
-    if (!res) return false;
+    if (!res) return 0;
     PQclear(res);
 
-    return true;
+    return ver_id;
 }
 
 bool db_file_delete(PGconn *conn, uint64_t file_id) {

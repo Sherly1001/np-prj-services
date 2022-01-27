@@ -71,9 +71,10 @@ db_file_t *db_file_create(PGconn *conn, uint64_t owner, uint16_t everyone_can,
 // [E]: get file from db
 db_file_t *db_file_get(PGconn *conn, uint64_t file_id, bool get_all_history);
 
-// [E]: save file to db
-bool db_file_save(PGconn *conn, uint64_t file_id, const uint64_t user_id,
+// [E]: save file to db, return 0 if failed otherwise return new version id
+uint64_t db_file_save(PGconn *conn, uint64_t file_id, const uint64_t user_id,
     const char *content);
+
 // [E]: delete file from db
 bool db_file_delete(PGconn *conn, uint64_t file_id);
 // [E]: set file permissions
