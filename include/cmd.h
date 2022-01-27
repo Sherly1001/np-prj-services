@@ -38,22 +38,20 @@ typedef struct cmd {
     json_object *args;
 } cmd_t;
 
-// create new cmd from string return NULL if failed
-// and raise new error
+// [E]: create new cmd from string return NULL if failed
 cmd_t *cmd_from_string(const char *str);
 // NO NEED to free() the string after using
 const char *cmd_to_string(const cmd_t *cmd);
 
-// create new cmd with type and args return NULL if failed
-// and raise new error
+// [E]: create new cmd with type and args return NULL if failed
 cmd_t *cmd_new(cmd_type_t type, ...) __attribute__((format(printf, 1, 2)));
 void   cmd_destroy(cmd_t *cmd);
 void   cmd_show(const cmd_t *cmd);
 
-// return true if ok, raise error if failed
+// [E]: return true if ok, raise error if failed
 bool cmd_validate(const cmd_t *cmd);
 
-// create new cmd_args with kind and value
+// [E]: create new cmd_args with kind and value
 json_object *cmd_args_new(const char *fmt, va_list ap);
 
 #endif

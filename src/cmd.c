@@ -1,6 +1,6 @@
 #include <cmd.h>
 
-// create new cmd from string return NULL if failed
+// [E]: create new cmd from string return NULL if failed
 cmd_t *cmd_from_string(const char *str) {
     cmd_t              *cmd         = malloc(sizeof(cmd_t));
     struct json_object *parsed_json = NULL;
@@ -54,7 +54,7 @@ const char *cmd_to_string(const cmd_t *cmd) {
     // NO NEED to free() the string after using
 }
 
-// create new cmd with type and args return NULL if failed
+// [E]: create new cmd with type and args return NULL if failed
 cmd_t *cmd_new(cmd_type_t type, ...) {
     cmd_t *cmd = malloc(sizeof(cmd_t));
     cmd->type  = NULL;
@@ -117,7 +117,7 @@ void cmd_show(const cmd_t *cmd) {
         json_object_to_json_string_ext(cmd->args, JSON_C_TO_STRING_SPACED));
 }
 
-// create new cmd_args with kind and value
+// [E]: create new cmd_args with kind and value
 json_object *cmd_args_new(const char *fmt, va_list ap) {
     json_object *_args = json_object_new_array();
 
@@ -153,7 +153,7 @@ json_object *cmd_args_new(const char *fmt, va_list ap) {
     return _args;
 }
 
-// return true if ok, raise error if failed
+// [E]: return true if ok, raise error if failed
 bool cmd_validate(const cmd_t *cmd) {
     const char *type = json_object_get_string(cmd->type);
     size_t      len  = strlen(type);
