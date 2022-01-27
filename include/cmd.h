@@ -8,25 +8,36 @@
 #include <stdarg.h>
 #include <json-c/json.h>
 
+#include <bool.h>
 #include <error.h>
 
 typedef const char *cmd_type_t;
 
-typedef uint8_t bool;
-#define true 1
-#define false 0
-
 #define CMD_IS_TYPE_OF(type, of) (strcmp(type, of) == 0)
 
 static const char cmd_types[][50] = {
-    "insert, %ld %ld %ld %s",
-    "remove, %ld %ld %ld %ld",
-    "get, %ld",
+    "insert, %s %s %ld %s",
+    "remove, %s %s %ld %ld",
+    "save, %s %s",
+    "get, %s",
+    "get-file-types, ",
+
+    "get-pers, ",
+    "set-per, %s %ld",
+    "set-user-per, %s %s %ld",
+    "get-per-types, ",
 };
 
-#define CMD_INSERT cmd_types[0]
-#define CMD_REMOVE cmd_types[1]
-#define CMD_GET    cmd_types[2]
+#define CMD_INSERT         "insert"
+#define CMD_REMOVE         "remove"
+#define CMD_SAVE           "save"
+#define CMD_GET            "get"
+#define CMD_GET_FILE_TYPES "get-file-types"
+
+#define CMD_GET_PERS      "get-pers"
+#define CMD_SET_PER       "set-per"
+#define CMD_SET_USER_PER  "set-user-per"
+#define CMD_GET_PER_TYPES "get-per-types"
 
 #define CMD_ARG_IS_KIND_OF(kind, of) (strcmp(kind, of) == 0)
 
@@ -41,22 +52,20 @@ typedef struct cmd {
     json_object *args;
 } cmd_t;
 
-// create new cmd from string return NULL if failed
-// and raise new error
+// [E]: create new cmd from string return NULL if failed
 cmd_t *cmd_from_string(const char *str);
 // NO NEED to free() the string after using
 const char *cmd_to_string(const cmd_t *cmd);
 
-// create new cmd with type and args return NULL if failed
-// and raise new error
+// [E]: create new cmd with type and args return NULL if failed
 cmd_t *cmd_new(cmd_type_t type, ...) __attribute__((format(printf, 1, 2)));
 void   cmd_destroy(cmd_t *cmd);
 void   cmd_show(const cmd_t *cmd);
 
-// return true if ok, raise error if failed
+// [E]: return true if ok, raise error if failed
 bool cmd_validate(const cmd_t *cmd);
 
-// create new cmd_args with kind and value
+// [E]: create new cmd_args with kind and value
 json_object *cmd_args_new(const char *fmt, va_list ap);
 
 #endif

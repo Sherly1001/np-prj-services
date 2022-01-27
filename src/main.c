@@ -5,14 +5,16 @@
 #include <ws.h>
 #include <cmd.h>
 #include <error.h>
+#include <dotenv.h>
 
 void onopen(struct lws *wsi);
 void onclose(struct lws *wsi);
 void onmessage(struct lws *wsi, const void *msg, size_t len, bool is_bin);
+void onrequest(struct lws *wsi, const char *path, const char *body, size_t len);
 struct my_ws ws = {onopen, onclose, onmessage};
 
 static struct lws_protocols protocols[] = {
-    {"http", lws_callback_http_dummy, 0, 0, 0, NULL, 0},
+    MY_HTTP_PROTOCOL(onrequest),
     MY_WS_PROTOCOL(ws),
     LWS_PROTOCOL_LIST_TERM,
 };
@@ -31,12 +33,29 @@ void sigint_handler() {
     interrupted = 1;
 }
 
+PGconn     *conn       = NULL;
+const char *secret_key = NULL;
+
 int main(int argc, const char **argv) {
+    pthread_mutex_t snf_mut = PTHREAD_MUTEX_INITIALIZER;
+    snowflake_t     snf     = {.worker = 1, .process = 1, .pmutex = &snf_mut};
+
+    load_env();
+    db_set_id_gen(&snf);
+
+    secret_key = getenv("SECRET_KEY");
+
+    conn = PQconnectdb(getenv("DB_URL"));
+    if (PQstatus(conn) != CONNECTION_OK) {
+        fprintf(stderr, "database connection refused\n");
+        exit(1);
+    }
+
     struct lws_context              *context;
     struct lws_context_creation_info info;
 
     const char *p;
-    int         logs = LLL_USER | LLL_ERR | LLL_WARN | LLL_NOTICE;
+    int         logs = LLL_USER | LLL_ERR | LLL_WARN;
 
     signal(SIGINT, sigint_handler);
 
@@ -73,51 +92,315 @@ int main(int argc, const char **argv) {
     lws_context_destroy(context);
 }
 
+size_t ws_send_res(struct lws *wsi, struct json_object *res) {
+    const char *res_s =
+        json_object_to_json_string_ext(res, JSON_C_TO_STRING_PLAIN);
+    return my_ws_send(wsi, res_s, strlen(res_s), false);
+}
+
+size_t ws_broadcast_res(
+    struct lws *wsi, struct lws *except, struct json_object *res) {
+    const char *res_s =
+        json_object_to_json_string_ext(res, JSON_C_TO_STRING_PLAIN);
+    return my_ws_send_all(wsi, except, res_s, strlen(res_s), false);
+}
+
 void onopen(struct lws *wsi) {
-    char client_name[50];
-    char client_ip[50];
-    int  fd = lws_get_socket_fd(wsi);
-    lws_get_peer_addresses(wsi, fd, client_name, 50, client_ip, 50);
-    lwsl_warn("got new connection from: %p: %s%s", wsi, client_name, client_ip);
+    struct my_per_session_data *pss = lws_wsi_user(wsi);
+
+    char path[1024], token[1024];
+    path[0]  = '\0';
+    token[0] = '\0';
+
+    lws_hdr_copy(wsi, path, 1023, WSI_TOKEN_GET_URI);
+    lws_get_urlarg_by_name(wsi, "token", token, 1023);
+
+    uint64_t uid = 0;
+    if (jwt_decode(token, secret_key, &uid)) {
+        pss->user = db_user_get(conn, uid, NULL);
+    } else {
+        pss->user = NULL;
+    }
+
+    lwsl_warn("new connection: %p: user: %s: path: %s", wsi,
+        pss->user ? pss->user->username : NULL, path);
+
+    struct json_object *res  = json_object_new_object();
+    struct json_object *acpt = json_object_new_object();
+    struct json_object *user = NULL;
+
+    if (pss->user) {
+        user = json_object_new_object();
+        char uid[21];
+        sprintf(uid, "%lu", pss->user->id);
+        json_object_object_add(user, "id", json_object_new_string(uid));
+        json_object_object_add(
+            user, "username", json_object_new_string(pss->user->username));
+        json_object_object_add(user, "email",
+            pss->user->email ? json_object_new_string(pss->user->email) : NULL);
+        json_object_object_add(user, "avatar_url",
+            pss->user->avatar_url
+                ? json_object_new_string(pss->user->avatar_url)
+                : NULL);
+    }
+
+    char ws_id[21];
+    sprintf(ws_id, "%lu", (uint64_t)wsi);
+    json_object_object_add(acpt, "ws_id", json_object_new_string(ws_id));
+    json_object_object_add(acpt, "user", user);
+    json_object_object_add(res, "accept", acpt);
+
+    ws_send_res(wsi, res);
+    json_object_put(res);
 }
 
 void onclose(struct lws *wsi) {
-    char client_name[50];
-    char client_ip[50];
-    int  fd = lws_get_socket_fd(wsi);
-    lws_get_peer_addresses(wsi, fd, client_name, 50, client_ip, 50);
-    lwsl_warn("connection closed: %p: %s%s", wsi, client_name, client_ip);
+    struct my_per_session_data *pss = lws_wsi_user(wsi);
+
+    lwsl_warn("connection closed: %p: user: %s", wsi,
+        pss->user ? pss->user->username : NULL);
+
+    db_user_drop(pss->user);
 }
 
 void onmessage(struct lws *wsi, const void *msg, size_t len, bool is_bin) {
-    char rep[1024];
-    sprintf(rep, "you sent %ld bytes", len);
+    struct my_per_session_data *pss = lws_wsi_user(wsi);
+    lwsl_err("got %ld, bin: %d: user: %s", len, is_bin,
+        pss->user ? pss->user->username : NULL);
 
-    lwsl_err("got %ld, bin: %d", len, is_bin);
+    if (is_bin) return;
 
-    if (!is_bin) {
-        char *str = malloc(len + 1);
-        memcpy(str, msg, len);
-        str[len] = '\0';
+    char *msg_s = malloc(len + 1);
+    strncpy(msg_s, msg, len);
 
-        cmd_t *cmd = cmd_from_string(str);
-        if (cmd) {
-            cmd_show(cmd);
+    struct json_object *res = json_object_new_object();
 
-            const char *cmd_s = cmd_to_string(cmd);
-            my_ws_send_all(wsi, wsi, cmd_s, strlen(cmd_s), false);
-
-            cmd_destroy(cmd);
-        } else {
-            error_t *err = get_error();
-            if (err) {
-                strcpy(rep, err->message);
-                destroy_error(err);
-            }
-        }
-
-        free(str);
+    cmd_t *cmd = cmd_from_string(msg_s);
+    if (!cmd) {
+        error_t *err = get_error();
+        json_object_object_add(
+            res, "error", json_object_new_string(err->message));
+        ws_send_res(wsi, res);
+        destroy_error(err);
+        goto __onmsg_drops;
     }
 
-    my_ws_send(wsi, rep, strlen(rep), false);
+    cmd_show(cmd);
+    const char *type = json_object_get_string(cmd->type);
+    if (CMD_IS_TYPE_OF(type, CMD_GET_FILE_TYPES)) {
+        struct json_object *arr = json_object_new_array();
+        struct json_object *arr_elm;
+
+        PGresult *db_res = db_get_file_types(conn);
+        int       rows   = PQntuples(db_res);
+        for (int i = 0; i < rows; ++i) {
+            arr_elm = json_object_new_array();
+
+            json_object_array_add(
+                arr_elm, json_object_new_int(atoi(PQgetvalue(db_res, i, 0))));
+            json_object_array_add(
+                arr_elm, json_object_new_string(PQgetvalue(db_res, i, 1)));
+
+            json_object_array_add(arr, arr_elm);
+        }
+        PQclear(db_res);
+
+        json_object_object_add(res, CMD_GET_FILE_TYPES, arr);
+        ws_send_res(wsi, res);
+    } else if (CMD_IS_TYPE_OF(type, CMD_GET_PER_TYPES)) {
+        struct json_object *arr = json_object_new_array();
+        struct json_object *arr_elm;
+
+        PGresult *db_res = db_get_permissions(conn);
+        int       rows   = PQntuples(db_res);
+        for (int i = 0; i < rows; ++i) {
+            arr_elm = json_object_new_array();
+
+            json_object_array_add(
+                arr_elm, json_object_new_int(atoi(PQgetvalue(db_res, i, 0))));
+            json_object_array_add(
+                arr_elm, json_object_new_string(PQgetvalue(db_res, i, 1)));
+
+            json_object_array_add(arr, arr_elm);
+        }
+        PQclear(db_res);
+
+        json_object_object_add(res, CMD_GET_PER_TYPES, arr);
+        ws_send_res(wsi, res);
+    } else {
+        my_ws_send_all(wsi, wsi, msg_s, strlen(msg_s), false);
+    }
+
+__onmsg_drops:
+    free(msg_s);
+    cmd_destroy(cmd);
+    json_object_put(res);
+}
+
+void onrequest(
+    struct lws *wsi, const char *path, const char *body, size_t len) {
+
+    lwsl_warn("new request: %p: %lu bytes, %s", wsi, len, path);
+
+    body && (*(char *)&body[len] = '\0');
+
+    int   code = 0;
+    char *stt, message[2048];
+    message[0] = '\0';
+
+    struct json_object *obj   = json_object_new_object();
+    struct json_object *jbody = body ? json_tokener_parse(body) : NULL;
+    struct json_object *data  = NULL;
+
+    if (body) {
+        if (!jbody) {
+            code = 422;
+            stt  = "error";
+            sprintf(message, "the body is not json");
+        } else if (strcmp(path, "/users/login") == 0) {
+            do {
+                struct json_object *username, *passwd;
+                json_object_object_get_ex(jbody, "username", &username);
+                json_object_object_get_ex(jbody, "passwd", &passwd);
+
+                if (!username ||
+                    json_object_get_type(username) != json_type_string) {
+                    code = 422;
+                    stt  = "error";
+                    sprintf(message, "missing username");
+                    break;
+                }
+
+                if (!passwd ||
+                    json_object_get_type(passwd) != json_type_string) {
+                    code = 422;
+                    stt  = "error";
+                    sprintf(message, "missing passwd");
+                    break;
+                }
+
+                db_user_t *user =
+                    db_user_login(conn, json_object_get_string(username),
+                        json_object_get_string(passwd));
+
+                if (!user) {
+                    code = 401;
+                    stt  = "error";
+                    sprintf(message, "username and password not matched");
+                    break;
+                }
+
+                char *token = jwt_encode(user->id, secret_key);
+
+                code = 200;
+                stt  = "ok";
+                data = json_object_new_string(token);
+
+                free(token);
+                db_user_drop(user);
+            } while (false);
+        } else if (strcmp(path, "/users/signin") == 0) {
+            do {
+                struct json_object *username, *passwd, *email, *avatar_url;
+                json_object_object_get_ex(jbody, "username", &username);
+                json_object_object_get_ex(jbody, "passwd", &passwd);
+                json_object_object_get_ex(jbody, "email", &email);
+                json_object_object_get_ex(jbody, "avatar_url", &avatar_url);
+
+                if (!username ||
+                    json_object_get_type(username) != json_type_string) {
+                    code = 422;
+                    stt  = "error";
+                    sprintf(message, "missing username");
+                    break;
+                }
+
+                if (!passwd ||
+                    json_object_get_type(passwd) != json_type_string) {
+                    code = 422;
+                    stt  = "error";
+                    sprintf(message, "missing passwd");
+                    break;
+                }
+
+                if (email && json_object_get_type(email) != json_type_string) {
+                    code = 422;
+                    stt  = "error";
+                    sprintf(message, "email is not string");
+                    break;
+                }
+
+                if (avatar_url &&
+                    json_object_get_type(avatar_url) != json_type_string) {
+                    code = 422;
+                    stt  = "error";
+                    sprintf(message, "avatar_url is not string");
+                    break;
+                }
+
+                db_user_t *user =
+                    db_user_add(conn, json_object_get_string(username),
+                        json_object_get_string(passwd),
+                        email ? json_object_get_string(email) : NULL,
+                        avatar_url ? json_object_get_string(avatar_url) : NULL);
+
+                if (!user) {
+                    error_t *err = get_error();
+
+                    code = 422;
+                    stt  = "error";
+                    sprintf(message, "%s", err->message);
+                    destroy_error(err);
+                    break;
+                }
+
+                char *token = jwt_encode(user->id, secret_key);
+
+                code = 200;
+                stt  = "ok";
+                data = json_object_new_string(token);
+
+                free(token);
+                db_user_drop(user);
+            } while (false);
+        } else {
+            code = 404;
+            stt  = "error";
+            sprintf(message, "resource not found");
+        }
+    } else {
+        if (strcmp(path, "/users/getinfo") == 0) {
+            do {
+                char auth[1024];
+                lws_hdr_copy(wsi, auth, 1023, WSI_TOKEN_HTTP_AUTHORIZATION);
+
+                uint64_t uid;
+                if (!jwt_decode(auth, secret_key, &uid)) {
+                    code = 401;
+                    stt  = "error";
+                    sprintf(message, "unauthorized");
+                    break;
+                }
+
+                lwsl_err("%lu\n", uid);
+                code = 200;
+                stt  = "ok";
+                sprintf(message, "%lu", uid);
+            } while (false);
+        } else {
+            code = 404;
+            stt  = "error";
+            sprintf(message, "resource not found");
+        }
+    }
+
+    json_object_object_add(obj, "stt", json_object_new_string(stt));
+    if (message[0]) {
+        json_object_object_add(obj, "message", json_object_new_string(message));
+    } else if (data) {
+        json_object_object_add(obj, "data", data);
+    }
+    my_http_send_json(wsi, code, obj);
+    json_object_put(obj);
+    json_object_put(jbody);
 }

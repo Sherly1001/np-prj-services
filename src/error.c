@@ -2,11 +2,18 @@
 
 static error_t *__err_buff = NULL;
 
-void raise_error(int code, const char *message) {
+void raise_error(int code, const char *message, ...) {
+    char buff[2048];
+
+    va_list ap;
+    va_start(ap, message);
+    vsprintf(buff, message, ap);
+    va_end(ap);
+
     error_t *err = malloc(sizeof(error_t));
     err->code    = code;
-    err->message = malloc(strlen(message) + 1);
-    strcpy(err->message, message);
+    err->message = malloc(strlen(buff) + 1);
+    strcpy(err->message, buff);
 
     err->prev  = __err_buff;
     __err_buff = err;

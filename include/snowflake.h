@@ -1,3 +1,6 @@
+#ifndef __SNOWFLAKE_H__
+#define __SNOWFLAKE_H__
+
 #include <stdlib.h>
 #include <stdint.h>
 #include <pthread.h>
@@ -30,3 +33,8 @@ typedef struct {
 uint64_t snowflake_id(snowflake_t *);
 uint64_t snowflake_lock_id(snowflake_t *);
 uint64_t snowflake_timestamp();
+
+// return miliseconds
+uint64_t snowflake_id_to_msec(uint64_t id);
+
+#endif
