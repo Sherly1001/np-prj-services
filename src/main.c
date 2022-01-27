@@ -33,7 +33,8 @@ void sigint_handler() {
     interrupted = 1;
 }
 
-PGconn *conn;
+PGconn     *conn       = NULL;
+const char *secret_key = NULL;
 
 int main(int argc, const char **argv) {
     pthread_mutex_t snf_mut = PTHREAD_MUTEX_INITIALIZER;
@@ -41,6 +42,8 @@ int main(int argc, const char **argv) {
 
     load_env();
     db_set_id_gen(&snf);
+
+    secret_key = getenv("SECRET_KEY");
 
     conn = PQconnectdb(getenv("DB_URL"));
     if (PQstatus(conn) != CONNECTION_OK) {
@@ -191,7 +194,7 @@ void onrequest(
                     break;
                 }
 
-                char *token = jwt_encode(user->id, "sher");
+                char *token = jwt_encode(user->id, secret_key);
 
                 code = 200;
                 stt  = "ok";
@@ -255,7 +258,7 @@ void onrequest(
                     break;
                 }
 
-                char *token = jwt_encode(user->id, "sher");
+                char *token = jwt_encode(user->id, secret_key);
 
                 code = 200;
                 stt  = "ok";
@@ -276,7 +279,7 @@ void onrequest(
                 lws_hdr_copy(wsi, auth, 1023, WSI_TOKEN_HTTP_AUTHORIZATION);
 
                 uint64_t uid;
-                if (!jwt_decode(auth, "sher", &uid)) {
+                if (!jwt_decode(auth, secret_key, &uid)) {
                     code = 401;
                     stt  = "error";
                     sprintf(message, "unauthorized");

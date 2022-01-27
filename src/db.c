@@ -1,6 +1,7 @@
 #include <db.h>
 
 static snowflake_t *__snf = NULL;
+extern const char  *secret_key;
 
 void db_set_id_gen(snowflake_t *snf) {
     __snf = snf;
@@ -358,7 +359,7 @@ db_user_t *db_user_add(PGconn *conn, const char *username, const char *passwd,
     }
 
     char hash_passwd[65];
-    jwt_sha256(passwd, "sher", hash_passwd);
+    jwt_sha256(passwd, secret_key, hash_passwd);
 
     char id_s[21];
     sprintf(id_s, "%ld", id);
@@ -457,7 +458,7 @@ db_user_t *db_user_login(
     db_user_t *res = db_user_get(conn, -1, username);
 
     char hash_passwd[65];
-    jwt_sha256(passwd, "sher", hash_passwd);
+    jwt_sha256(passwd, secret_key, hash_passwd);
 
     if (!res || strcmp(res->hash_passwd, hash_passwd) != 0) {
         db_user_drop(res);
