@@ -294,7 +294,6 @@ size_t my_http_send_json(struct lws *wsi, int stt, struct json_object *json) {
             wsi, stt, (unsigned char **)&p, (unsigned char *)headers + 1024)) {
 
         lws_callback_on_writable(wsi);
-        free((char *)body);
         return 0;
     }
     sprintf(p,
@@ -331,6 +330,5 @@ size_t my_http_send_json(struct lws *wsi, int stt, struct json_object *json) {
     vec_add(pss->v_write, &amsg);
 
     lws_callback_on_writable(wsi);
-    free((char *)body);
     return body_len;
 }
