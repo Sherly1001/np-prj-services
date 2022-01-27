@@ -98,6 +98,7 @@ cmd_t *cmd_new(cmd_type_t type, ...) {
 }
 
 void cmd_destroy(cmd_t *cmd) {
+    if (!cmd) return;
     json_object_put(cmd->_cmd_json_tokener);
     free(cmd);
     cmd = NULL;
