@@ -4,6 +4,7 @@
 #include <stdint.h>
 #include <libpq-fe.h>
 
+#include <jwt.h>
 #include <bool.h>
 #include <error.h>
 #include <snowflake.h>

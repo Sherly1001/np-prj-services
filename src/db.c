@@ -357,13 +357,16 @@ db_user_t *db_user_add(PGconn *conn, const char *username, const char *passwd,
         return NULL;
     }
 
+    char hash_passwd[65];
+    jwt_sha256(passwd, "sher", hash_passwd);
+
     char id_s[21];
     sprintf(id_s, "%ld", id);
 
     const char *params[] = {
         id_s,
         username,
-        passwd,
+        hash_passwd,
         email,
         avatar_url,
     };
@@ -379,8 +382,8 @@ db_user_t *db_user_add(PGconn *conn, const char *username, const char *passwd,
     user->username = malloc(sizeof(username) + 1);
     strcpy(user->username, username);
 
-    user->hash_passwd = malloc(sizeof(passwd) + 1);
-    strcpy(user->hash_passwd, passwd);
+    user->hash_passwd = malloc(sizeof(hash_passwd) + 1);
+    strcpy(user->hash_passwd, hash_passwd);
 
     if (email) {
         user->email = malloc(sizeof(email) + 1);
@@ -452,7 +455,11 @@ db_user_t *db_user_get(PGconn *conn, uint64_t user_id, const char *username) {
 db_user_t *db_user_login(
     PGconn *conn, const char *username, const char *passwd) {
     db_user_t *res = db_user_get(conn, -1, username);
-    if (!res || strcmp(res->hash_passwd, passwd) != 0) {
+
+    char hash_passwd[65];
+    jwt_sha256(passwd, "sher", hash_passwd);
+
+    if (!res || strcmp(res->hash_passwd, hash_passwd) != 0) {
         db_user_drop(res);
         return NULL;
     }
