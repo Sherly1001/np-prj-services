@@ -56,7 +56,7 @@ db_file_t *db_file_create(PGconn *conn, uint64_t owner, uint16_t everyone_can,
 
     PGresult *res =
         db_exec(conn, "insert into content_versions values ($1, null, $2, $3)",
-            3, params, PGRES_COMMAND_OK, 901, __func__);
+            3, params, PGRES_COMMAND_OK, 300, __func__);
     if (!res) return NULL;
     PQclear(res);
 
@@ -67,7 +67,7 @@ db_file_t *db_file_create(PGconn *conn, uint64_t owner, uint16_t everyone_can,
     params[4] = ids[1];
 
     res = db_exec(conn, "insert into files values ($1, $2, $3, $4, $5)", 5,
-        params, PGRES_COMMAND_OK, 902, __func__);
+        params, PGRES_COMMAND_OK, 301, __func__);
     if (!res) return NULL;
     PQclear(res);
 
@@ -76,7 +76,7 @@ db_file_t *db_file_create(PGconn *conn, uint64_t owner, uint16_t everyone_can,
 
     res =
         db_exec(conn, "update content_versions set file_id = $1 where id = $2",
-            2, params, PGRES_COMMAND_OK, 903, __func__);
+            2, params, PGRES_COMMAND_OK, 302, __func__);
     if (!res) return NULL;
     PQclear(res);
 
@@ -109,11 +109,11 @@ db_file_t *db_file_get(PGconn *conn, uint64_t file_id, bool get_all_history) {
     };
 
     PGresult *res = db_exec(conn, "select * from files where id = $1", 1,
-        params, PGRES_TUPLES_OK, 904, __func__);
+        params, PGRES_TUPLES_OK, 303, __func__);
     if (!res) return NULL;
 
     if (PQntuples(res) != 1) {
-        raise_error(905, "%s: file not found", __func__);
+        raise_error(304, "%s: file not found", __func__);
         PQclear(res);
         return NULL;
     }
@@ -133,7 +133,7 @@ db_file_t *db_file_get(PGconn *conn, uint64_t file_id, bool get_all_history) {
     res = db_exec(conn,
         "select * from content_versions where file_id = $1 order by id desc "
         "limit $2",
-        2, params, PGRES_TUPLES_OK, 905, __func__);
+        2, params, PGRES_TUPLES_OK, 305, __func__);
     if (!res) return NULL;
 
     db_content_version_t **ctns = &file->contents;
@@ -180,12 +180,12 @@ bool db_file_save(PGconn *conn, uint64_t file_id, const uint64_t user_id,
 
     PGresult *res =
         db_exec(conn, "insert into content_versions values ($1, $2, $3, $4)", 4,
-            params, PGRES_COMMAND_OK, 906, __func__);
+            params, PGRES_COMMAND_OK, 306, __func__);
     if (!res) return false;
     PQclear(res);
 
     res = db_exec(conn, "update files set current_version = $1 where id = $2",
-        2, params, PGRES_COMMAND_OK, 907, __func__);
+        2, params, PGRES_COMMAND_OK, 307, __func__);
     if (!res) return false;
     PQclear(res);
 
@@ -198,11 +198,11 @@ bool db_file_delete(PGconn *conn, uint64_t file_id) {
     const char *params[] = {fid};
 
     PGresult *res = db_exec(conn, "delete from files where id = $1", 1, params,
-        PGRES_COMMAND_OK, 908, __func__);
+        PGRES_COMMAND_OK, 308, __func__);
     if (!res) return false;
 
     if (atoi(PQcmdTuples(res)) != 1) {
-        raise_error(909, "%s: file %ld not exist", __func__, file_id);
+        raise_error(309, "%s: file %ld not exist", __func__, file_id);
         PQclear(res);
         return false;
     }
@@ -237,7 +237,7 @@ bool db_file_set_per(
     PGresult *res = db_exec(conn,
         "insert into user_file_permissions values ($1, $2, $3, $4)\n"
         "on conflict(user_id, file_id) do update set permission_id = $4",
-        4, params, PGRES_COMMAND_OK, 910, __func__);
+        4, params, PGRES_COMMAND_OK, 310, __func__);
     if (!res) return false;
 
     PQclear(res);
@@ -354,7 +354,7 @@ db_user_t *db_user_add(PGconn *conn, const char *username, const char *passwd,
 
     uint64_t id = snowflake_lock_id(__snf);
     if (!username || !passwd) {
-        raise_error(801, "%s: username or password is empty", __func__);
+        raise_error(320, "%s: username or password is empty", __func__);
         return NULL;
     }
 
@@ -374,7 +374,7 @@ db_user_t *db_user_add(PGconn *conn, const char *username, const char *passwd,
 
     PGresult *res = db_exec(conn,
         "insert into users values ($1, $2, $3, $4, $5) returning *", 5, params,
-        PGRES_TUPLES_OK, 802, __func__);
+        PGRES_TUPLES_OK, 321, __func__);
     if (!res) return NULL;
 
     db_user_t *user = malloc(sizeof(db_user_t));

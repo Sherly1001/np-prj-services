@@ -15,7 +15,7 @@ cmd_t *cmd_from_string(const char *str) {
     json_object_object_get_ex(parsed_json, "type", &_type);
     if ((!_type) || (json_object_get_type(_type) != json_type_string)) {
         cmd_destroy(cmd);
-        raise_error(401, "%s: not found key 'type'", __func__);
+        raise_error(100, "%s: not found key 'type'", __func__);
         return NULL;
     }
     cmd->type = _type;
@@ -25,13 +25,13 @@ cmd_t *cmd_from_string(const char *str) {
 
     if (!_args) {
         cmd_destroy(cmd);
-        raise_error(401, "%s: not found key 'args'", __func__);
+        raise_error(101, "%s: not found key 'args'", __func__);
         return NULL;
     }
 
     if (json_object_get_type(_args) != json_type_array) {
         cmd_destroy(cmd);
-        raise_error(101, "%s: key 'args' is not array type", __func__);
+        raise_error(102, "%s: key 'args' is not array type", __func__);
         return NULL;
     }
 
@@ -74,7 +74,7 @@ cmd_t *cmd_new(cmd_type_t type, ...) {
         json_object_object_add(tokener, "type", json_object_new_string("get"));
     } else {
         cmd_destroy(cmd);
-        raise_error(201, "%s: can't create command of type %s", __func__, type);
+        raise_error(110, "%s: can't create command of type %s", __func__, type);
         return NULL;
     }
     json_object_object_get_ex(tokener, "type", &cmd->type);
@@ -143,7 +143,7 @@ json_object *cmd_args_new(const char *fmt, va_list ap) {
         } else {
             free(_fmt);
             json_object_put(_args);
-            raise_error(301, "%s: wrong kind '%s'", __func__, kind);
+            raise_error(120, "%s: wrong kind '%s'", __func__, kind);
             return NULL;
         }
         kind = strtok(NULL, " ");
@@ -167,7 +167,7 @@ bool cmd_validate(const cmd_t *cmd) {
     }
 
     if (i >= cmd_types_len) {
-        raise_error(401, "%s: not found command of type %s", __func__, type);
+        raise_error(103, "%s: not found command of type %s", __func__, type);
         return false;
     }
 
@@ -181,7 +181,7 @@ bool cmd_validate(const cmd_t *cmd) {
          kind       = strtok(NULL, " "), ++idx) {
 
         if (idx >= len) {
-            raise_error(402, "%s: wrong args length %ld, expect '%s'", __func__,
+            raise_error(104, "%s: wrong args length %ld, expect '%s'", __func__,
                 idx, cmd_types[i]);
             return false;
         }
@@ -214,7 +214,7 @@ bool cmd_validate(const cmd_t *cmd) {
         }
 
         if (err_buff[0] != '\0') {
-            raise_error(403, "%s", err_buff);
+            raise_error(105, "%s", err_buff);
             return false;
         }
     }
