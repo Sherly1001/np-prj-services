@@ -421,25 +421,25 @@ db_user_t *db_user_get(PGconn *conn, uint64_t user_id, const char *username) {
     db_user_t *user = malloc(sizeof(db_user_t));
     user->id        = atol(PQgetvalue(res, 0, 0));
 
-    user->username = malloc(sizeof(PQgetvalue(res, 0, 1)) + 1);
+    user->username = malloc(PQgetlength(res, 0, 1) + 1);
     strcpy(user->username, PQgetvalue(res, 0, 1));
 
     if (!PQgetisnull(res, 0, 2)) {
-        user->hash_passwd = malloc(sizeof(PQgetvalue(res, 0, 2)) + 1);
+        user->hash_passwd = malloc(PQgetlength(res, 0, 2) + 1);
         strcpy(user->hash_passwd, PQgetvalue(res, 0, 2));
     } else {
         user->hash_passwd = NULL;
     }
 
     if (!PQgetisnull(res, 0, 3)) {
-        user->email = malloc(sizeof(PQgetvalue(res, 0, 3)) + 1);
+        user->email = malloc(PQgetlength(res, 0, 3) + 1);
         strcpy(user->email, PQgetvalue(res, 0, 3));
     } else {
         user->email = NULL;
     }
 
     if (!PQgetisnull(res, 0, 4)) {
-        user->avatar_url = malloc(sizeof(PQgetvalue(res, 0, 4)) + 1);
+        user->avatar_url = malloc(PQgetlength(res, 0, 4) + 1);
         strcpy(user->avatar_url, PQgetvalue(res, 0, 4));
     } else {
         user->avatar_url = NULL;
