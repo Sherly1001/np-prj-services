@@ -126,7 +126,7 @@ static char jwt_header[] = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9";
 char *jwt_encode(uint64_t user_id, const char *key) {
     const char *payload;
 
-    char payload_enc[65];
+    char payload_enc[256];
     char sign[65], sign_enc[256];
     int  sign_len;
 
@@ -160,6 +160,11 @@ bool jwt_decode(const char *token, const char *key, uint64_t *user_id) {
     char *jwt_header = strtok(token_cp, ".");
     char *payload    = strtok(NULL, ".");
     char *sign       = strtok(NULL, ".");
+
+    if (!jwt_header || !payload || !sign) {
+        free(token_cp);
+        return false;
+    }
 
     char tmp[2048], tmp_sign[64], tmp_sign_enc[256];
     int  tmp_sign_len;
