@@ -92,6 +92,19 @@ int main(int argc, const char **argv) {
     lws_context_destroy(context);
 }
 
+size_t ws_send_res(struct lws *wsi, struct json_object *res) {
+    const char *res_s =
+        json_object_to_json_string_ext(res, JSON_C_TO_STRING_PLAIN);
+    return my_ws_send(wsi, res_s, strlen(res_s), false);
+}
+
+size_t ws_broadcast_res(
+    struct lws *wsi, struct lws *except, struct json_object *res) {
+    const char *res_s =
+        json_object_to_json_string_ext(res, JSON_C_TO_STRING_PLAIN);
+    return my_ws_send_all(wsi, except, res_s, strlen(res_s), false);
+}
+
 void onopen(struct lws *wsi) {
     struct my_per_session_data *pss = lws_wsi_user(wsi);
 
@@ -109,8 +122,36 @@ void onopen(struct lws *wsi) {
         pss->user = NULL;
     }
 
-    lwsl_warn("new connection: %p: path: %s: user: %s", wsi, path,
-        pss->user ? pss->user->username : NULL);
+    lwsl_warn("new connection: %p: user: %s: path: %s", wsi,
+        pss->user ? pss->user->username : NULL, path);
+
+    struct json_object *res  = json_object_new_object();
+    struct json_object *acpt = json_object_new_object();
+    struct json_object *user = NULL;
+
+    if (pss->user) {
+        user = json_object_new_object();
+        char uid[21];
+        sprintf(uid, "%lu", pss->user->id);
+        json_object_object_add(user, "id", json_object_new_string(uid));
+        json_object_object_add(
+            user, "username", json_object_new_string(pss->user->username));
+        json_object_object_add(user, "email",
+            pss->user->email ? json_object_new_string(pss->user->email) : NULL);
+        json_object_object_add(user, "avatar_url",
+            pss->user->avatar_url
+                ? json_object_new_string(pss->user->avatar_url)
+                : NULL);
+    }
+
+    char ws_id[21];
+    sprintf(ws_id, "%lu", (uint64_t)wsi);
+    json_object_object_add(acpt, "ws_id", json_object_new_string(ws_id));
+    json_object_object_add(acpt, "user", user);
+    json_object_object_add(res, "accept", acpt);
+
+    ws_send_res(wsi, res);
+    json_object_put(res);
 }
 
 void onclose(struct lws *wsi) {
@@ -123,36 +164,77 @@ void onclose(struct lws *wsi) {
 }
 
 void onmessage(struct lws *wsi, const void *msg, size_t len, bool is_bin) {
-    char rep[1024];
-    sprintf(rep, "you sent %ld bytes", len);
+    struct my_per_session_data *pss = lws_wsi_user(wsi);
+    lwsl_err("got %ld, bin: %d: user: %s", len, is_bin,
+        pss->user ? pss->user->username : NULL);
 
-    lwsl_err("got %ld, bin: %d", len, is_bin);
+    if (is_bin) return;
 
-    if (!is_bin) {
-        char *str = malloc(len + 1);
-        memcpy(str, msg, len);
-        str[len] = '\0';
+    char *msg_s = malloc(len + 1);
+    strncpy(msg_s, msg, len);
 
-        cmd_t *cmd = cmd_from_string(str);
-        if (cmd) {
-            cmd_show(cmd);
+    struct json_object *res = json_object_new_object();
 
-            const char *cmd_s = cmd_to_string(cmd);
-            my_ws_send_all(wsi, wsi, cmd_s, strlen(cmd_s), false);
-
-            cmd_destroy(cmd);
-        } else {
-            error_t *err = get_error();
-            if (err) {
-                strcpy(rep, err->message);
-                destroy_error(err);
-            }
-        }
-
-        free(str);
+    cmd_t *cmd = cmd_from_string(msg_s);
+    if (!cmd) {
+        error_t *err = get_error();
+        json_object_object_add(
+            res, "error", json_object_new_string(err->message));
+        ws_send_res(wsi, res);
+        destroy_error(err);
+        goto __onmsg_drops;
     }
 
-    my_ws_send(wsi, rep, strlen(rep), false);
+    cmd_show(cmd);
+    const char *type = json_object_get_string(cmd->type);
+    if (CMD_IS_TYPE_OF(type, CMD_GET_FILE_TYPES)) {
+        struct json_object *arr = json_object_new_array();
+        struct json_object *arr_elm;
+
+        PGresult *db_res = db_get_file_types(conn);
+        int       rows   = PQntuples(db_res);
+        for (int i = 0; i < rows; ++i) {
+            arr_elm = json_object_new_array();
+
+            json_object_array_add(
+                arr_elm, json_object_new_int(atoi(PQgetvalue(db_res, i, 0))));
+            json_object_array_add(
+                arr_elm, json_object_new_string(PQgetvalue(db_res, i, 1)));
+
+            json_object_array_add(arr, arr_elm);
+        }
+        PQclear(db_res);
+
+        json_object_object_add(res, CMD_GET_FILE_TYPES, arr);
+        ws_send_res(wsi, res);
+    } else if (CMD_IS_TYPE_OF(type, CMD_GET_PER_TYPES)) {
+        struct json_object *arr = json_object_new_array();
+        struct json_object *arr_elm;
+
+        PGresult *db_res = db_get_permissions(conn);
+        int       rows   = PQntuples(db_res);
+        for (int i = 0; i < rows; ++i) {
+            arr_elm = json_object_new_array();
+
+            json_object_array_add(
+                arr_elm, json_object_new_int(atoi(PQgetvalue(db_res, i, 0))));
+            json_object_array_add(
+                arr_elm, json_object_new_string(PQgetvalue(db_res, i, 1)));
+
+            json_object_array_add(arr, arr_elm);
+        }
+        PQclear(db_res);
+
+        json_object_object_add(res, CMD_GET_PER_TYPES, arr);
+        ws_send_res(wsi, res);
+    } else {
+        my_ws_send_all(wsi, wsi, msg_s, strlen(msg_s), false);
+    }
+
+__onmsg_drops:
+    free(msg_s);
+    cmd_destroy(cmd);
+    json_object_put(res);
 }
 
 void onrequest(

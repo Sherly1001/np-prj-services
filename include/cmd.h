@@ -16,14 +16,28 @@ typedef const char *cmd_type_t;
 #define CMD_IS_TYPE_OF(type, of) (strcmp(type, of) == 0)
 
 static const char cmd_types[][50] = {
-    "insert, %ld %ld %ld %s",
-    "remove, %ld %ld %ld %ld",
-    "get, %ld",
+    "insert, %s %s %ld %s",
+    "remove, %s %s %ld %ld",
+    "save, %s %s",
+    "get, %s",
+    "get-file-types, ",
+
+    "get-pers, ",
+    "set-per, %s %ld",
+    "set-user-per, %s %s %ld",
+    "get-per-types, ",
 };
 
-#define CMD_INSERT cmd_types[0]
-#define CMD_REMOVE cmd_types[1]
-#define CMD_GET    cmd_types[2]
+#define CMD_INSERT         "insert"
+#define CMD_REMOVE         "remove"
+#define CMD_SAVE           "save"
+#define CMD_GET            "get"
+#define CMD_GET_FILE_TYPES "get-file-types"
+
+#define CMD_GET_PERS      "get-pers"
+#define CMD_SET_PER       "set-per"
+#define CMD_SET_USER_PER  "set-user-per"
+#define CMD_GET_PER_TYPES "get-per-types"
 
 #define CMD_ARG_IS_KIND_OF(kind, of) (strcmp(kind, of) == 0)
 
