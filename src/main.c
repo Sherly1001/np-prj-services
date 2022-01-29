@@ -45,7 +45,13 @@ int main(int argc, const char **argv) {
 
     secret_key = getenv("SECRET_KEY");
 
-    conn = PQconnectdb(getenv("DB_URL"));
+    const char *db_url = getenv("DB_URL");
+    if (!db_url) {
+        fprintf(stderr, "missing env DB_URL\n");
+        exit(1);
+    }
+
+    conn = PQconnectdb(db_url);
     if (PQstatus(conn) != CONNECTION_OK) {
         fprintf(stderr, "database connection refused\n");
         exit(1);
