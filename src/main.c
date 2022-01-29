@@ -57,18 +57,24 @@ int main(int argc, const char **argv) {
         exit(1);
     }
 
+    int port = 8080;
+
+    const char *port_s = lws_cmdline_option(argc, argv, "-p");
+    if (port_s) {
+        port = atoi(port_s);
+    }
+
+    port_s = getenv("PORT");
+    if (port_s) {
+        port = atoi(port_s);
+    }
+
     struct lws_context              *context;
     struct lws_context_creation_info info;
 
-    const char *p;
-    int         logs = LLL_USER | LLL_ERR | LLL_WARN;
+    int logs = LLL_USER | LLL_ERR | LLL_WARN;
 
     signal(SIGINT, sigint_handler);
-
-    int port = 8080;
-    if ((p = lws_cmdline_option(argc, argv, "-p"))) port = atoi(p);
-
-    if ((p = lws_cmdline_option(argc, argv, "-d"))) logs = atoi(p);
 
     lws_set_log_level(logs, NULL);
 
