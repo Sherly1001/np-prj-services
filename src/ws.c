@@ -1,7 +1,14 @@
 #include <ws.h>
 
-void file_info_drop(void *ff) {
-    struct file_info *f = ff;
+int file_info_cmp(const void *a, const void *b) {
+    const struct file_info *fa = a;
+    const struct file_info *fb = b;
+
+    return fa->file->id - fb->file->id;
+}
+
+void file_info_drop(void *a) {
+    struct file_info *f = a;
     db_file_drop(f->file);
     vec_drop(f->wsis);
 }
@@ -66,8 +73,8 @@ int my_ws_callback(struct lws *wsi, enum lws_callback_reasons reason,
                 lws_get_vhost(wsi), prl, sizeof(struct my_per_vhost_data));
             vhd->pss_list =
                 vec_new_r(struct my_per_session_data *, NULL, NULL, NULL);
-            vhd->files =
-                vec_new_r(struct file_info, NULL, NULL, file_info_drop);
+            vhd->files = vec_new_r(
+                struct file_info, NULL, file_info_cmp, file_info_drop);
             break;
 
         case LWS_CALLBACK_PROTOCOL_DESTROY:

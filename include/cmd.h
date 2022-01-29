@@ -19,7 +19,7 @@ static const char cmd_types[][50] = {
     "insert, %s %s %ld %s",
     "remove, %s %s %ld %ld",
     "save, %s %s",
-    "get, %s",
+    "get, %s %u",
     "get-file-types, ",
 
     "get-pers, ",

@@ -45,24 +45,36 @@ int main(int argc, const char **argv) {
 
     secret_key = getenv("SECRET_KEY");
 
-    conn = PQconnectdb(getenv("DB_URL"));
+    const char *db_url = getenv("DB_URL");
+    if (!db_url) {
+        fprintf(stderr, "missing env DB_URL\n");
+        exit(1);
+    }
+
+    conn = PQconnectdb(db_url);
     if (PQstatus(conn) != CONNECTION_OK) {
         fprintf(stderr, "database connection refused\n");
         exit(1);
     }
 
+    int port = 8080;
+
+    const char *port_s = lws_cmdline_option(argc, argv, "-p");
+    if (port_s) {
+        port = atoi(port_s);
+    }
+
+    port_s = getenv("PORT");
+    if (port_s) {
+        port = atoi(port_s);
+    }
+
     struct lws_context              *context;
     struct lws_context_creation_info info;
 
-    const char *p;
-    int         logs = LLL_USER | LLL_ERR | LLL_WARN;
+    int logs = LLL_USER | LLL_ERR | LLL_WARN;
 
     signal(SIGINT, sigint_handler);
-
-    int port = 8080;
-    if ((p = lws_cmdline_option(argc, argv, "-p"))) port = atoi(p);
-
-    if ((p = lws_cmdline_option(argc, argv, "-d"))) logs = atoi(p);
 
     lws_set_log_level(logs, NULL);
 
@@ -165,6 +177,9 @@ void onclose(struct lws *wsi) {
 
 void onmessage(struct lws *wsi, const void *msg, size_t len, bool is_bin) {
     struct my_per_session_data *pss = lws_wsi_user(wsi);
+    struct my_per_vhost_data   *vhd =
+        lws_protocol_vh_priv_get(lws_get_vhost(wsi), lws_get_protocol(wsi));
+
     lwsl_err("got %ld, bin: %d: user: %s", len, is_bin,
         pss->user ? pss->user->username : NULL);
 
@@ -227,6 +242,93 @@ void onmessage(struct lws *wsi, const void *msg, size_t len, bool is_bin) {
 
         json_object_object_add(res, CMD_GET_PER_TYPES, arr);
         ws_send_res(wsi, res);
+    } else if (CMD_IS_TYPE_OF(type, CMD_GET)) {
+        uint64_t file_id = atol(
+            json_object_get_string(json_object_array_get_idx(cmd->args, 0)));
+        bool get_all =
+            json_object_get_boolean(json_object_array_get_idx(cmd->args, 1));
+
+        struct file_info  fi = {.file = &(db_file_t){.id = file_id}};
+        struct file_info *pfi =
+            vec_get(vhd->files, vec_index_of(vhd->files, &fi));
+
+        if (!pfi) {
+            fi.file = db_file_get(conn, file_id, false);
+            if (!fi.file) {
+                error_t *err = get_error();
+
+                struct json_object *res_err = json_object_new_object();
+                json_object_object_add(
+                    res_err, "error", json_object_new_string(err->message));
+                json_object_object_add(res, CMD_GET, res_err);
+
+                ws_send_res(wsi, res);
+                destroy_error(err);
+                goto __onmsg_drops;
+            }
+
+            fi.wsis = vec_new_r(struct lws *, NULL, NULL, NULL);
+            vec_add(vhd->files, &fi);
+            pfi = vec_get(vhd->files, vec_index_of(vhd->files, &fi));
+        }
+
+        vec_add(pfi->wsis, &wsi);
+        pss->file = pfi->file;
+
+        db_file_t *file = pfi->file;
+        if (get_all) {
+            file = db_file_get(conn, file_id, true);
+            if (!file) {
+                error_t *err = get_error();
+
+                struct json_object *res_err = json_object_new_object();
+                json_object_object_add(
+                    res_err, "error", json_object_new_string(err->message));
+                json_object_object_add(res, CMD_GET, res_err);
+
+                ws_send_res(wsi, res);
+                destroy_error(err);
+                goto __onmsg_drops;
+            }
+        }
+
+        char fid[21], vid[21], uid[21];
+        sprintf(fid, "%lu", file_id);
+
+        struct json_object *file_res = json_object_new_object();
+        struct json_object *contents = json_object_new_array();
+        struct json_object *version  = NULL;
+
+        for (db_content_version_t *ver = file->contents; ver; ver = ver->prev) {
+            version = json_object_new_object();
+
+            sprintf(vid, "%lu", ver->id);
+            sprintf(uid, "%lu", ver->update_by);
+
+            json_object_object_add(
+                version, "ver_id", json_object_new_string(vid));
+            json_object_object_add(version, "update_by",
+                ver->update_by != 0 ? json_object_new_string(uid) : NULL);
+            json_object_object_add(
+                version, "content", json_object_new_string(ver->content));
+
+            json_object_array_add(contents, version);
+        }
+
+        json_object_object_add(
+            file_res, "file_id", json_object_new_string(fid));
+        json_object_object_add(
+            file_res, "everyone_can", json_object_new_int(file->everyone_can));
+        json_object_object_add(
+            file_res, "file_type", json_object_new_int(file->type_id));
+        json_object_object_add(file_res, "contents", contents);
+
+        json_object_object_add(res, CMD_GET, file_res);
+        ws_send_res(wsi, res);
+
+        if (get_all) {
+            db_file_drop(file);
+        }
     } else {
         my_ws_send_all(wsi, wsi, msg_s, strlen(msg_s), false);
     }
