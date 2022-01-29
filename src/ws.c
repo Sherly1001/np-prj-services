@@ -37,7 +37,7 @@ void *get_all_payload(vec_t *vec, size_t *len_o, int *type_o) {
         len += pmsg->len;
     }
 
-    payload = malloc(len);
+    payload = malloc(len + 1);
     *len_o  = len;
 
     len = 0;
