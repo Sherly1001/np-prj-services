@@ -244,16 +244,7 @@ void onmessage(struct lws *wsi, const void *msg, size_t len, bool is_bin) {
         if (!pfi) {
             fi.file = db_file_get(conn, file_id, false);
             if (!fi.file) {
-                error_t *err = get_error();
-
-                struct json_object *res_err = json_object_new_object();
-                json_object_object_add(
-                    res_err, "error", json_object_new_string(err->message));
-                json_object_object_add(res, CMD_GET, res_err);
-
-                ws_send_res(wsi, res);
-                destroy_error(err);
-                goto __onmsg_drops;
+                goto __onmsg_error;
             }
 
             fi.wsis = vec_new_r(struct lws *, NULL, NULL, NULL);
@@ -268,16 +259,7 @@ void onmessage(struct lws *wsi, const void *msg, size_t len, bool is_bin) {
         if (get_all) {
             file = db_file_get(conn, file_id, true);
             if (!file) {
-                error_t *err = get_error();
-
-                struct json_object *res_err = json_object_new_object();
-                json_object_object_add(
-                    res_err, "error", json_object_new_string(err->message));
-                json_object_object_add(res, CMD_GET, res_err);
-
-                ws_send_res(wsi, res);
-                destroy_error(err);
-                goto __onmsg_drops;
+                goto __onmsg_error;
             }
         }
 
@@ -330,16 +312,7 @@ void onmessage(struct lws *wsi, const void *msg, size_t len, bool is_bin) {
         if (!pfi) {
             fi.file = db_file_get(conn, file_id, false);
             if (!fi.file) {
-                error_t *err = get_error();
-
-                struct json_object *res_err = json_object_new_object();
-                json_object_object_add(
-                    res_err, "error", json_object_new_string(err->message));
-                json_object_object_add(res, CMD_GET_FILE_PERS, res_err);
-
-                ws_send_res(wsi, res);
-                destroy_error(err);
-                goto __onmsg_drops;
+                goto __onmsg_error;
             }
 
             fi.wsis = vec_new_r(struct lws *, NULL, NULL, NULL);
@@ -392,16 +365,7 @@ void onmessage(struct lws *wsi, const void *msg, size_t len, bool is_bin) {
         }
 
         if (error) {
-            error_t *err = get_error();
-
-            struct json_object *res_err = json_object_new_object();
-            json_object_object_add(
-                res_err, "error", json_object_new_string(err->message));
-            json_object_object_add(res, CMD_GET_USER_PERS, res_err);
-
-            ws_send_res(wsi, res);
-            destroy_error(err);
-            goto __onmsg_drops;
+            goto __onmsg_error;
         }
 
         char                fid[21];
@@ -439,16 +403,7 @@ void onmessage(struct lws *wsi, const void *msg, size_t len, bool is_bin) {
         if (!pfi) {
             fi.file = db_file_get(conn, file_id, false);
             if (!fi.file) {
-                error_t *err = get_error();
-
-                struct json_object *res_err = json_object_new_object();
-                json_object_object_add(
-                    res_err, "error", json_object_new_string(err->message));
-                json_object_object_add(res, CMD_SET_PER, res_err);
-
-                ws_send_res(wsi, res);
-                destroy_error(err);
-                goto __onmsg_drops;
+                goto __onmsg_error;
             }
 
             fi.wsis = vec_new_r(struct lws *, NULL, NULL, NULL);
@@ -476,16 +431,7 @@ void onmessage(struct lws *wsi, const void *msg, size_t len, bool is_bin) {
         if (!pfi) {
             fi.file = db_file_get(conn, file_id, false);
             if (!fi.file) {
-                error_t *err = get_error();
-
-                struct json_object *res_err = json_object_new_object();
-                json_object_object_add(
-                    res_err, "error", json_object_new_string(err->message));
-                json_object_object_add(res, CMD_SET_USER_PER, res_err);
-
-                ws_send_res(wsi, res);
-                destroy_error(err);
-                goto __onmsg_drops;
+                goto __onmsg_error;
             }
 
             fi.wsis = vec_new_r(struct lws *, NULL, NULL, NULL);
@@ -496,16 +442,7 @@ void onmessage(struct lws *wsi, const void *msg, size_t len, bool is_bin) {
 
         bool result = db_file_set_user_per(conn, file_id, user_id, per_id);
         if (!result) {
-            error_t *err = get_error();
-
-            struct json_object *res_err = json_object_new_object();
-            json_object_object_add(
-                res_err, "error", json_object_new_string(err->message));
-            json_object_object_add(res, CMD_SET_USER_PER, res_err);
-
-            ws_send_res(wsi, res);
-            destroy_error(err);
-            goto __onmsg_drops;
+            goto __onmsg_error;
         }
 
         json_object_object_add(
@@ -514,6 +451,17 @@ void onmessage(struct lws *wsi, const void *msg, size_t len, bool is_bin) {
     } else {
         my_ws_send_all(wsi, wsi, msg_s, strlen(msg_s), false);
     }
+
+__onmsg_error:
+    error_t *err = get_error();
+
+    struct json_object *res_err = json_object_new_object();
+    json_object_object_add(
+        res_err, "error", json_object_new_string(err->message));
+    json_object_object_add(res, type, res_err);
+
+    ws_send_res(wsi, res);
+    destroy_error(err);
 
 __onmsg_drops:
     free(msg_s);

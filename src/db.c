@@ -211,8 +211,7 @@ bool db_file_delete(PGconn *conn, uint64_t file_id) {
     return true;
 }
 
-bool db_file_set_per(
-    PGconn *conn, uint64_t file_id, int per_id) {
+bool db_file_set_per(PGconn *conn, uint64_t file_id, int per_id) {
 
     char ids[2][21];
     sprintf(ids[0], "%ld", file_id);
