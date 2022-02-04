@@ -390,7 +390,7 @@ void onmessage(struct lws *wsi, const void *msg, size_t len, bool is_bin) {
         ws_send_res(wsi, res);
 
         db_user_pers_drop(current_user_pers);
-    } else if (CMD_IS_TYPE_OF(type, CMD_SET_PER)) {
+    } else if (CMD_IS_TYPE_OF(type, CMD_SET_FILE_PER)) {
         uint64_t file_id = atol(
             json_object_get_string(json_object_array_get_idx(cmd->args, 0)));
         uint64_t per_id =
@@ -418,7 +418,7 @@ void onmessage(struct lws *wsi, const void *msg, size_t len, bool is_bin) {
         }
         
         json_object_object_add(
-            res, CMD_SET_PER, json_object_new_boolean(result));
+            res, CMD_SET_FILE_PER, json_object_new_boolean(result));
         ws_send_res(wsi, res);
     } else if (CMD_IS_TYPE_OF(type, CMD_SET_USER_PER)) {
         uint64_t file_id = atol(
