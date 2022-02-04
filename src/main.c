@@ -413,6 +413,10 @@ void onmessage(struct lws *wsi, const void *msg, size_t len, bool is_bin) {
         vec_add(pfi->wsis, &wsi);
 
         bool result = db_file_set_per(conn, file_id, per_id);
+        if (!result) {
+            goto __onmsg_error;
+        }
+        
         json_object_object_add(
             res, CMD_SET_PER, json_object_new_boolean(result));
         ws_send_res(wsi, res);
@@ -451,6 +455,8 @@ void onmessage(struct lws *wsi, const void *msg, size_t len, bool is_bin) {
     } else {
         my_ws_send_all(wsi, wsi, msg_s, strlen(msg_s), false);
     }
+
+    goto __onmsg_drops;
 
 __onmsg_error:
     error_t *err = get_error();
