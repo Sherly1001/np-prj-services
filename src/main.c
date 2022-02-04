@@ -44,7 +44,7 @@ int main(int argc, const char **argv) {
     db_set_id_gen(&snf);
 
     secret_key = getenv("SECRET_KEY");
-    
+
     conn = PQconnectdb(getenv("DB_URL"));
     if (PQstatus(conn) != CONNECTION_OK) {
         fprintf(stderr, "database connection refused\n");
@@ -236,7 +236,8 @@ void onmessage(struct lws *wsi, const void *msg, size_t len, bool is_bin) {
         bool get_all =
             json_object_get_boolean(json_object_array_get_idx(cmd->args, 1));
 
-        struct file_info  fi = {.file = &(db_file_t){.id = file_id}};
+        struct file_info fi = {
+            .file = &(db_file_t){.id = file_id}, .wsis = NULL};
         struct file_info *pfi =
             vec_get(vhd->files, vec_index_of(vhd->files, &fi));
 
@@ -321,7 +322,8 @@ void onmessage(struct lws *wsi, const void *msg, size_t len, bool is_bin) {
         uint64_t file_id = atol(
             json_object_get_string(json_object_array_get_idx(cmd->args, 0)));
 
-        struct file_info  fi = {.file = &(db_file_t){.id = file_id}};
+        struct file_info fi = {
+            .file = &(db_file_t){.id = file_id}, .wsis = NULL};
         struct file_info *pfi =
             vec_get(vhd->files, vec_index_of(vhd->files, &fi));
 
@@ -333,7 +335,7 @@ void onmessage(struct lws *wsi, const void *msg, size_t len, bool is_bin) {
                 struct json_object *res_err = json_object_new_object();
                 json_object_object_add(
                     res_err, "error", json_object_new_string(err->message));
-                json_object_object_add(res, CMD_GET, res_err);
+                json_object_object_add(res, CMD_GET_FILE_PERS, res_err);
 
                 ws_send_res(wsi, res);
                 destroy_error(err);
@@ -350,10 +352,10 @@ void onmessage(struct lws *wsi, const void *msg, size_t len, bool is_bin) {
 
         db_file_pers_t *file_pers = db_file_get_pers(conn, file_id);
 
-        char uid[21];
-        struct json_object *file_pers_res   = json_object_new_object();
-        struct json_object *user_pers  = json_object_new_array();
-        struct json_object *permission = NULL;
+        char                uid[21];
+        struct json_object *file_pers_res = json_object_new_object();
+        struct json_object *user_pers     = json_object_new_array();
+        struct json_object *permission    = NULL;
 
         for (db_user_pers_t *per = file_pers->user_pers; per; per = per->next) {
             permission = json_object_new_object();
@@ -369,8 +371,8 @@ void onmessage(struct lws *wsi, const void *msg, size_t len, bool is_bin) {
             json_object_array_add(user_pers, permission);
         }
 
-        json_object_object_add(
-            file_pers_res, "everyone_can", json_object_new_int(file_pers->everyone_can));
+        json_object_object_add(file_pers_res, "everyone_can",
+            json_object_new_int(file_pers->everyone_can));
         json_object_object_add(file_pers_res, "user_pers", user_pers);
 
         json_object_object_add(res, CMD_GET_FILE_PERS, file_pers_res);
@@ -378,10 +380,9 @@ void onmessage(struct lws *wsi, const void *msg, size_t len, bool is_bin) {
 
         db_file_pers_drop(file_pers);
     } else if (CMD_IS_TYPE_OF(type, CMD_GET_USER_PERS)) {
-        // TODO: get-user-pers
         db_user_t      *current_user      = pss->user;
         db_user_pers_t *current_user_pers = NULL;
-        int error = 0;
+        int             error             = 0;
 
         if (!current_user) {
             raise_error(401, "%s: user not login", __func__);
@@ -396,14 +397,14 @@ void onmessage(struct lws *wsi, const void *msg, size_t len, bool is_bin) {
             struct json_object *res_err = json_object_new_object();
             json_object_object_add(
                 res_err, "error", json_object_new_string(err->message));
-            json_object_object_add(res, CMD_GET, res_err);
+            json_object_object_add(res, CMD_GET_USER_PERS, res_err);
 
             ws_send_res(wsi, res);
             destroy_error(err);
             goto __onmsg_drops;
         }
 
-        char fid[21];
+        char                fid[21];
         struct json_object *user_pers_res = json_object_new_array();
         struct json_object *permission    = NULL;
 
@@ -423,15 +424,16 @@ void onmessage(struct lws *wsi, const void *msg, size_t len, bool is_bin) {
 
         json_object_object_add(res, CMD_GET_USER_PERS, user_pers_res);
         ws_send_res(wsi, res);
-        
-        db_user_pers_drop(user_pers_res);
+
+        db_user_pers_drop(current_user_pers);
     } else if (CMD_IS_TYPE_OF(type, CMD_SET_PER)) {
         uint64_t file_id = atol(
             json_object_get_string(json_object_array_get_idx(cmd->args, 0)));
         uint64_t per_id =
             json_object_get_int64(json_object_array_get_idx(cmd->args, 1));
 
-        struct file_info  fi = {.file = &(db_file_t){.id = file_id}};
+        struct file_info fi = {
+            .file = &(db_file_t){.id = file_id}, .wsis = NULL};
         struct file_info *pfi =
             vec_get(vhd->files, vec_index_of(vhd->files, &fi));
         if (!pfi) {
@@ -442,7 +444,7 @@ void onmessage(struct lws *wsi, const void *msg, size_t len, bool is_bin) {
                 struct json_object *res_err = json_object_new_object();
                 json_object_object_add(
                     res_err, "error", json_object_new_string(err->message));
-                json_object_object_add(res, CMD_GET, res_err);
+                json_object_object_add(res, CMD_SET_PER, res_err);
 
                 ws_send_res(wsi, res);
                 destroy_error(err);
@@ -456,7 +458,8 @@ void onmessage(struct lws *wsi, const void *msg, size_t len, bool is_bin) {
         vec_add(pfi->wsis, &wsi);
 
         bool result = db_file_set_per(conn, file_id, per_id);
-        json_object_object_add(res, CMD_SET_PER, json_object_new_boolean(result));
+        json_object_object_add(
+            res, CMD_SET_PER, json_object_new_boolean(result));
         ws_send_res(wsi, res);
     } else if (CMD_IS_TYPE_OF(type, CMD_SET_USER_PER)) {
         uint64_t file_id = atol(
@@ -466,7 +469,8 @@ void onmessage(struct lws *wsi, const void *msg, size_t len, bool is_bin) {
         uint64_t per_id =
             json_object_get_int64(json_object_array_get_idx(cmd->args, 2));
 
-        struct file_info  fi = {.file = &(db_file_t){.id = file_id}};
+        struct file_info fi = {
+            .file = &(db_file_t){.id = file_id}, .wsis = NULL};
         struct file_info *pfi =
             vec_get(vhd->files, vec_index_of(vhd->files, &fi));
         if (!pfi) {
@@ -477,7 +481,7 @@ void onmessage(struct lws *wsi, const void *msg, size_t len, bool is_bin) {
                 struct json_object *res_err = json_object_new_object();
                 json_object_object_add(
                     res_err, "error", json_object_new_string(err->message));
-                json_object_object_add(res, CMD_GET, res_err);
+                json_object_object_add(res, CMD_SET_USER_PER, res_err);
 
                 ws_send_res(wsi, res);
                 destroy_error(err);
@@ -491,7 +495,21 @@ void onmessage(struct lws *wsi, const void *msg, size_t len, bool is_bin) {
         vec_add(pfi->wsis, &wsi);
 
         bool result = db_file_set_user_per(conn, file_id, user_id, per_id);
-        json_object_object_add(res, CMD_SET_USER_PER, json_object_new_boolean(result));
+        if (!result) {
+            error_t *err = get_error();
+
+            struct json_object *res_err = json_object_new_object();
+            json_object_object_add(
+                res_err, "error", json_object_new_string(err->message));
+            json_object_object_add(res, CMD_SET_USER_PER, res_err);
+
+            ws_send_res(wsi, res);
+            destroy_error(err);
+            goto __onmsg_drops;
+        }
+
+        json_object_object_add(
+            res, CMD_SET_USER_PER, json_object_new_boolean(result));
         ws_send_res(wsi, res);
     } else {
         my_ws_send_all(wsi, wsi, msg_s, strlen(msg_s), false);
