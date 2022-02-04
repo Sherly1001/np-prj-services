@@ -399,25 +399,26 @@ db_user_t *db_user_add(PGconn *conn, const char *username, const char *passwd,
         "insert into users values ($1, $2, $3, $4, $5) returning *", 5, params,
         PGRES_TUPLES_OK, 321, __func__);
     if (!res) return NULL;
+    PQclear(res);
 
     db_user_t *user = malloc(sizeof(db_user_t));
     user->id        = id;
 
-    user->username = malloc(sizeof(username) + 1);
+    user->username = malloc(strlen(username) + 1);
     strcpy(user->username, username);
 
-    user->hash_passwd = malloc(sizeof(hash_passwd) + 1);
+    user->hash_passwd = malloc(strlen(hash_passwd) + 1);
     strcpy(user->hash_passwd, hash_passwd);
 
     if (email) {
-        user->email = malloc(sizeof(email) + 1);
+        user->email = malloc(strlen(email) + 1);
         strcpy(user->email, email);
     } else {
         user->email = NULL;
     }
 
     if (avatar_url) {
-        user->avatar_url = malloc(sizeof(avatar_url) + 1);
+        user->avatar_url = malloc(strlen(avatar_url) + 1);
         strcpy(user->avatar_url, avatar_url);
     } else {
         user->avatar_url = NULL;
