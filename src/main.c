@@ -237,7 +237,10 @@ void onmessage(struct lws *wsi, const void *msg, size_t len, bool is_bin) {
             json_object_get_boolean(json_object_array_get_idx(cmd->args, 1));
 
         struct file_info fi = {
-            .file = &(db_file_t){.id = file_id}, .wsis = NULL};
+            .file = &(db_file_t){.id = file_id},
+            .wsis = NULL,
+        };
+
         struct file_info *pfi =
             vec_get(vhd->files, vec_index_of(vhd->files, &fi));
 
@@ -416,7 +419,7 @@ void onmessage(struct lws *wsi, const void *msg, size_t len, bool is_bin) {
         if (!result) {
             goto __onmsg_error;
         }
-        
+
         json_object_object_add(
             res, CMD_SET_FILE_PER, json_object_new_boolean(result));
         ws_send_res(wsi, res);
