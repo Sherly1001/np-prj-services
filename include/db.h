@@ -78,7 +78,9 @@ uint64_t db_file_save(PGconn *conn, uint64_t file_id, const uint64_t user_id,
 // [E]: delete file from db
 bool db_file_delete(PGconn *conn, uint64_t file_id);
 // [E]: set file permissions
-bool db_file_set_per(
+bool db_file_set_per(PGconn *conn, uint64_t file_id, int per_id);
+// [E]: set file permissions for an user
+bool db_file_set_user_per(
     PGconn *conn, uint64_t file_id, uint64_t user_id, int per_id);
 
 db_file_pers_t *db_file_get_pers(PGconn *conn, uint64_t file_id);

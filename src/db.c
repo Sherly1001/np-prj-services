@@ -212,6 +212,30 @@ bool db_file_delete(PGconn *conn, uint64_t file_id) {
 }
 
 bool db_file_set_per(
+    PGconn *conn, uint64_t file_id, int per_id) {
+
+    char ids[2][21];
+    sprintf(ids[0], "%ld", file_id);
+    sprintf(ids[1], "%d", per_id);
+
+    const char *params[] = {
+        ids[0],
+        ids[1],
+    };
+
+    PGresult *res = db_exec(conn,
+        "update files\n"
+        "set everyone_can = $2\n"
+        "where id = $1",
+        2, params, PGRES_COMMAND_OK, 310, __func__);
+    if (!res) return false;
+
+    PQclear(res);
+
+    return true;
+}
+
+bool db_file_set_user_per(
     PGconn *conn, uint64_t file_id, uint64_t user_id, int per_id) {
 
     if (!__snf) {

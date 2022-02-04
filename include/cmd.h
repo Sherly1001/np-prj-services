@@ -22,7 +22,8 @@ static const char cmd_types[][50] = {
     "get, %s %u",
     "get-file-types, ",
 
-    "get-pers, ",
+    "get-user-pers, ",
+    "get-file-pers, %s",
     "set-per, %s %ld",
     "set-user-per, %s %s %ld",
     "get-per-types, ",
@@ -34,7 +35,8 @@ static const char cmd_types[][50] = {
 #define CMD_GET            "get"
 #define CMD_GET_FILE_TYPES "get-file-types"
 
-#define CMD_GET_PERS      "get-pers"
+#define CMD_GET_USER_PERS "get-user-pers"
+#define CMD_GET_FILE_PERS "get-file-pers"
 #define CMD_SET_PER       "set-per"
 #define CMD_SET_USER_PER  "set-user-per"
 #define CMD_GET_PER_TYPES "get-per-types"
