@@ -370,20 +370,16 @@ void onmessage(struct lws *wsi, const void *msg, size_t len, bool is_bin) {
     } else if (CMD_IS_TYPE_OF(type, CMD_GET_USER_PERS)) {
         db_user_t      *current_user      = pss->user;
         db_user_pers_t *current_user_pers = NULL;
-        int             error             = 0;
 
         if (!current_user) {
             raise_error(401, "%s: user not login", __func__);
-            error = 1;
+            goto __onmsg_error;
         } else {
             current_user_pers = db_file_get_user_per(conn, current_user->id);
         }
 
-        if (error) {
-            goto __onmsg_error;
-        }
+        char fid[21];
 
-        char                fid[21];
         struct json_object *user_pers_res = json_object_new_array();
         struct json_object *permission    = NULL;
 
@@ -473,7 +469,7 @@ void onmessage(struct lws *wsi, const void *msg, size_t len, bool is_bin) {
 
     goto __onmsg_drops;
 
-__onmsg_error:
+__onmsg_error:;
     error_t *err = get_error();
 
     struct json_object *res_err = json_object_new_object();
