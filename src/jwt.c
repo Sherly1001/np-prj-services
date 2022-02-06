@@ -132,8 +132,8 @@ char *jwt_encode(uint64_t user_id, const char *key) {
 
     char *token = malloc(2048);
 
-    // exp 7 days
-    time_t exp = time(NULL) + 604800;
+    // exp 30 days
+    time_t exp = time(NULL) + 2592000;
 
     struct json_object *claim = json_object_new_object();
     json_object_object_add(claim, "exp", json_object_new_uint64(exp));
