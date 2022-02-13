@@ -66,6 +66,8 @@ size_t my_ws_send(struct lws *wsi, const void *msg, size_t len, bool is_bin);
 size_t my_ws_send_all(struct lws *wsi, struct lws *except, const void *msg,
     size_t len, bool is_bin);
 
+size_t my_http_send(
+    struct lws *wsi, int stt, const char *headers, const char *body);
 size_t my_http_send_json(struct lws *wsi, int stt, struct json_object *json);
 
 #define MY_WS_PROTOCOL(ws)                                                     \
