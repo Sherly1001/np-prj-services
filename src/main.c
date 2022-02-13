@@ -45,24 +45,36 @@ int main(int argc, const char **argv) {
 
     secret_key = getenv("SECRET_KEY");
 
-    conn = PQconnectdb(getenv("DB_URL"));
+    const char *db_url = getenv("DB_URL");
+    if (!db_url) {
+        fprintf(stderr, "missing env DB_URL\n");
+        exit(1);
+    }
+
+    conn = PQconnectdb(db_url);
     if (PQstatus(conn) != CONNECTION_OK) {
         fprintf(stderr, "database connection refused\n");
         exit(1);
     }
 
+    int port = 8080;
+
+    const char *port_s = lws_cmdline_option(argc, argv, "-p");
+    if (port_s) {
+        port = atoi(port_s);
+    }
+
+    port_s = getenv("PORT");
+    if (port_s) {
+        port = atoi(port_s);
+    }
+
     struct lws_context              *context;
     struct lws_context_creation_info info;
 
-    const char *p;
-    int         logs = LLL_USER | LLL_ERR | LLL_WARN;
+    int logs = LLL_USER | LLL_ERR | LLL_WARN;
 
     signal(SIGINT, sigint_handler);
-
-    int port = 8080;
-    if ((p = lws_cmdline_option(argc, argv, "-p"))) port = atoi(p);
-
-    if ((p = lws_cmdline_option(argc, argv, "-d"))) logs = atoi(p);
 
     lws_set_log_level(logs, NULL);
 
@@ -358,20 +370,16 @@ void onmessage(struct lws *wsi, const void *msg, size_t len, bool is_bin) {
     } else if (CMD_IS_TYPE_OF(type, CMD_GET_USER_PERS)) {
         db_user_t      *current_user      = pss->user;
         db_user_pers_t *current_user_pers = NULL;
-        int             error             = 0;
 
         if (!current_user) {
             raise_error(401, "%s: user not login", __func__);
-            error = 1;
+            goto __onmsg_error;
         } else {
             current_user_pers = db_file_get_user_per(conn, current_user->id);
         }
 
-        if (error) {
-            goto __onmsg_error;
-        }
+        char fid[21];
 
-        char                fid[21];
         struct json_object *user_pers_res = json_object_new_array();
         struct json_object *permission    = NULL;
 
@@ -577,7 +585,7 @@ void onmessage(struct lws *wsi, const void *msg, size_t len, bool is_bin) {
 
     goto __onmsg_drops;
 
-__onmsg_error:
+__onmsg_error:;
     error_t *err = get_error();
 
     struct json_object *res_err = json_object_new_object();
