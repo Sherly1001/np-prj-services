@@ -59,12 +59,12 @@ int main(int argc, const char **argv) {
 
     int port = 8080;
 
-    const char *port_s = lws_cmdline_option(argc, argv, "-p");
+    const char *port_s = getenv("PORT");
     if (port_s) {
         port = atoi(port_s);
     }
 
-    port_s = getenv("PORT");
+    port_s = lws_cmdline_option(argc, argv, "-p");
     if (port_s) {
         port = atoi(port_s);
     }
