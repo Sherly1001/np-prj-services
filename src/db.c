@@ -156,8 +156,86 @@ db_file_t *db_file_get(PGconn *conn, uint64_t file_id, bool get_all_history) {
     return file;
 }
 
-uint64_t db_file_save(PGconn *conn, uint64_t file_id, const uint64_t user_id,
-    const char *content) {
+db_content_version_t *db_file_update(PGconn *conn, uint64_t file_id,
+    uint64_t update_by, size_t from, size_t to, const char *string) {
+    char *new_content, *old_content;
+    char  ids[3][21];
+    sprintf(ids[0], "%ld", file_id);
+    sprintf(ids[1], "%ld", update_by);
+
+    const char *params[3] = {
+        ids[0],
+    };
+
+    // get the content of the current version
+    PGresult *res = db_exec(conn,
+        "select current_version, content from content_versions cv\n"
+        "inner join files on files.current_version = cv.id\n"
+        "where file_id = $1",
+        1, params, PGRES_TUPLES_OK, 0, NULL);
+    if (!res) return NULL;
+
+    if (atoi(PQcmdTuples(res)) != 1) {
+        raise_error(309, "%s: file %ld not exist", __func__, file_id);
+        PQclear(res);
+        return NULL;
+    }
+
+    old_content    = PQgetvalue(res, 0, 1);
+    size_t old_len = strlen(old_content);
+    size_t new_len = strlen(old_content) + 1;
+    if (string) { // insert
+        new_len += strlen(string);
+    }
+
+    db_content_version_t *version = malloc(sizeof(db_content_version_t));
+    version->id                   = atol(PQgetvalue(res, 0, 0));
+    version->file_id              = file_id;
+    version->update_by            = update_by;
+    version->content              = malloc(new_len);
+    strcpy(version->content, old_content);
+    version->prev = NULL;
+
+    // insert/remove old content
+    if (from > old_len) {
+        from = old_len;
+        to   = from;
+    }
+
+    if (to > old_len - 1) {
+        to = old_len;
+    }
+
+    new_content       = version->content;
+    new_content[from] = '\0';
+
+    if (string) { // insert
+        strcat(new_content, string);
+        strcat(new_content, old_content + from);
+    } else { // remove
+        strcat(new_content, old_content + to + 1);
+    }
+
+    // update content
+    sprintf(ids[2], "%ld", version->id);
+    params[2] = ids[2]; // version_id
+    params[0] = ids[1]; // update_by
+    params[1] = new_content;
+
+    PQclear(res);
+    res = db_exec(conn,
+        "update content_versions\n"
+        "set update_by = $1, content = $2::text\n"
+        "where id = $3",
+        3, params, PGRES_COMMAND_OK, 404, __func__);
+    if (!res) return NULL;
+    PQclear(res);
+
+    return version;
+}
+
+db_content_version_t *db_file_save(PGconn *conn, uint64_t file_id,
+    const uint64_t user_id, const char *content) {
 
     if (!__snf) {
         raise_error(1001, "%s: not found id generator", __func__);
@@ -181,15 +259,33 @@ uint64_t db_file_save(PGconn *conn, uint64_t file_id, const uint64_t user_id,
     PGresult *res =
         db_exec(conn, "insert into content_versions values ($1, $2, $3, $4)", 4,
             params, PGRES_COMMAND_OK, 306, __func__);
-    if (!res) return 0;
+    if (!res) return NULL;
     PQclear(res);
 
     res = db_exec(conn, "update files set current_version = $1 where id = $2",
         2, params, PGRES_COMMAND_OK, 307, __func__);
-    if (!res) return 0;
+    if (!res) return NULL;
     PQclear(res);
 
-    return ver_id;
+    params[0] = ids[1];
+
+    res = db_exec(conn,
+        "select cv.id from content_versions cv\n"
+        "inner join files on current_version = cv.id\n"
+        "where file_id = $1",
+        1, params, PGRES_TUPLES_OK, 0, NULL);
+    if (!res) return NULL;
+
+    db_content_version_t *version = malloc(sizeof(db_content_version_t));
+    version->id                   = atol(PQgetvalue(res, 0, 0));
+    version->file_id              = file_id;
+    version->update_by            = user_id;
+    version->content              = malloc(strlen(content) + 1);
+    strcpy(version->content, content);
+    version->prev = NULL;
+
+    PQclear(res);
+    return version;
 }
 
 bool db_file_delete(PGconn *conn, uint64_t file_id) {
@@ -399,25 +495,26 @@ db_user_t *db_user_add(PGconn *conn, const char *username, const char *passwd,
         "insert into users values ($1, $2, $3, $4, $5) returning *", 5, params,
         PGRES_TUPLES_OK, 321, __func__);
     if (!res) return NULL;
+    PQclear(res);
 
     db_user_t *user = malloc(sizeof(db_user_t));
     user->id        = id;
 
-    user->username = malloc(sizeof(username) + 1);
+    user->username = malloc(strlen(username) + 1);
     strcpy(user->username, username);
 
-    user->hash_passwd = malloc(sizeof(hash_passwd) + 1);
+    user->hash_passwd = malloc(strlen(hash_passwd) + 1);
     strcpy(user->hash_passwd, hash_passwd);
 
     if (email) {
-        user->email = malloc(sizeof(email) + 1);
+        user->email = malloc(strlen(email) + 1);
         strcpy(user->email, email);
     } else {
         user->email = NULL;
     }
 
     if (avatar_url) {
-        user->avatar_url = malloc(sizeof(avatar_url) + 1);
+        user->avatar_url = malloc(strlen(avatar_url) + 1);
         strcpy(user->avatar_url, avatar_url);
     } else {
         user->avatar_url = NULL;

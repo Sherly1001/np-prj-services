@@ -71,9 +71,13 @@ db_file_t *db_file_create(PGconn *conn, uint64_t owner, uint16_t everyone_can,
 // [E]: get file from db
 db_file_t *db_file_get(PGconn *conn, uint64_t file_id, bool get_all_history);
 
-// [E]: save file to db, return 0 if failed otherwise return new version id
-uint64_t db_file_save(PGconn *conn, uint64_t file_id, const uint64_t user_id,
-    const char *content);
+// [E]: insert/remove content in a file from db
+db_content_version_t *db_file_update(PGconn *conn, uint64_t file_id,
+    uint64_t update_by, size_t from, size_t to, const char *string);
+
+// [E]: save file to db, return NULL if failed otherwise return new version
+db_content_version_t *db_file_save(PGconn *conn, uint64_t file_id,
+    const uint64_t user_id, const char *content);
 
 // [E]: delete file from db
 bool db_file_delete(PGconn *conn, uint64_t file_id);

@@ -455,8 +455,124 @@ void onmessage(struct lws *wsi, const void *msg, size_t len, bool is_bin) {
         json_object_object_add(
             res, CMD_SET_USER_PER, json_object_new_boolean(result));
         ws_send_res(wsi, res);
+    } else if (CMD_IS_TYPE_OF(type, CMD_SAVE)) {
+        uint64_t file_id = atol(
+            json_object_get_string(json_object_array_get_idx(cmd->args, 0)));
+        uint64_t user_id = atol(
+            json_object_get_string(json_object_array_get_idx(cmd->args, 1)));
+        const char *content =
+            json_object_get_string(json_object_array_get_idx(cmd->args, 2));
+
+        struct file_info fi = {
+            .file = &(db_file_t){.id = file_id}, .wsis = NULL};
+        struct file_info *pfi =
+            vec_get(vhd->files, vec_index_of(vhd->files, &fi));
+        if (!pfi) {
+            fi.file = db_file_get(conn, file_id, false);
+            if (!fi.file) {
+                goto __onmsg_error;
+            }
+
+            fi.wsis = vec_new_r(struct lws *, NULL, NULL, NULL);
+            vec_add(vhd->files, &fi);
+            pfi = vec_get(vhd->files, vec_index_of(vhd->files, &fi));
+        }
+        vec_add(pfi->wsis, &wsi);
+
+        db_content_version_t *version =
+            db_file_save(conn, file_id, user_id, content);
+        if (!version) {
+            goto __onmsg_error;
+        }
+
+        struct json_object *new_version = json_object_new_object();
+        char                fid[21], uid[21], vid[21];
+
+        sprintf(fid, "%lu", file_id);
+        sprintf(vid, "%lu", version->id);
+        sprintf(uid, "%lu", user_id);
+
+        json_object_object_add(
+            new_version, "file_id", json_object_new_string(fid));
+        json_object_object_add(
+            new_version, "version_id", json_object_new_string(vid));
+        json_object_object_add(
+            new_version, "update_by", json_object_new_string(uid));
+        json_object_object_add(
+            new_version, "content", json_object_new_string(content));
+
+        json_object_object_add(res, "type", json_object_new_string(type));
+        json_object_object_add(res, "new_version", new_version);
+
+        ws_broadcast_res(wsi, NULL, res); // except: NULL // need fix
+        db_content_version_drop(version);
     } else {
-        my_ws_send_all(wsi, wsi, msg_s, strlen(msg_s), false);
+        // type: insert, remove
+        uint64_t file_id = atol(
+            json_object_get_string(json_object_array_get_idx(cmd->args, 0)));
+        uint64_t user_id = atol(
+            json_object_get_string(json_object_array_get_idx(cmd->args, 1)));
+        int from = json_object_get_int(json_object_array_get_idx(cmd->args, 2));
+        int to   = json_object_get_int(json_object_array_get_idx(cmd->args, 3));
+        const char *string = NULL;
+
+        if (from < 0 || (to > 0 && to < from)) {
+            raise_error(400, "%s: invalid offset", __func__);
+            goto __onmsg_error;
+        }
+
+        if (CMD_IS_TYPE_OF(type, CMD_INSERT)) {
+            string =
+                json_object_get_string(json_object_array_get_idx(cmd->args, 4));
+        }
+
+        struct file_info fi = {
+            .file = &(db_file_t){.id = file_id}, .wsis = NULL};
+        struct file_info *pfi =
+            vec_get(vhd->files, vec_index_of(vhd->files, &fi));
+        if (!pfi) {
+            fi.file = db_file_get(conn, file_id, false);
+            if (!fi.file) {
+                goto __onmsg_error;
+            }
+
+            fi.wsis = vec_new_r(struct lws *, NULL, NULL, NULL);
+            vec_add(vhd->files, &fi);
+            pfi = vec_get(vhd->files, vec_index_of(vhd->files, &fi));
+        }
+        vec_add(pfi->wsis, &wsi);
+
+        db_content_version_t *version =
+            db_file_update(conn, file_id, user_id, from, to, string);
+        if (!version) {
+            goto __onmsg_error;
+        }
+
+        struct json_object *new_version = json_object_new_object();
+        char                fid[21], uid[21], vid[21];
+
+        sprintf(fid, "%lu", file_id);
+        sprintf(vid, "%lu", version->id);
+        sprintf(uid, "%lu", user_id);
+
+        json_object_object_add(
+            new_version, "file_id", json_object_new_string(fid));
+        json_object_object_add(
+            new_version, "version_id", json_object_new_string(vid));
+        json_object_object_add(
+            new_version, "update_by", json_object_new_string(uid));
+        json_object_object_add(new_version, "from", json_object_new_int(from));
+        json_object_object_add(new_version, "to", json_object_new_int(to));
+        if (CMD_IS_TYPE_OF(type, CMD_INSERT)) {
+            json_object_object_add(
+                new_version, "string", json_object_new_string(string));
+        }
+
+        json_object_object_add(res, "type", json_object_new_string(type));
+        json_object_object_add(res, "new_version", new_version);
+
+        ws_broadcast_res(wsi, NULL, res); // except: NULL // need fix
+        db_content_version_drop(version);
     }
 
     goto __onmsg_drops;

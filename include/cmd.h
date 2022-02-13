@@ -16,9 +16,9 @@ typedef const char *cmd_type_t;
 #define CMD_IS_TYPE_OF(type, of) (strcmp(type, of) == 0)
 
 static const char cmd_types[][50] = {
-    "insert, %s %s %ld %s",
+    "insert, %s %s %ld %ld %s",
     "remove, %s %s %ld %ld",
-    "save, %s %s",
+    "save, %s %s %s",
     "get, %s %u",
     "get-file-types, ",
 
