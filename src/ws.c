@@ -290,6 +290,56 @@ int my_http_callback(struct lws *wsi, enum lws_callback_reasons reason,
     return 0;
 }
 
+size_t my_http_send(
+    struct lws *wsi, int stt, const char *headers, const char *body) {
+    struct my_http_ss *pss = lws_wsi_user(wsi);
+
+    size_t body_len = strlen(body);
+
+    char headers_[1024], *p = headers_;
+
+    if (lws_add_http_header_status(
+            wsi, stt, (unsigned char **)&p, (unsigned char *)headers_ + 1024)) {
+
+        lws_callback_on_writable(wsi);
+        return 0;
+    }
+    sprintf(p,
+        "%s"
+        "Content-Length: %ld\r\n"
+        "\r\n",
+        headers ? headers : "", body_len);
+
+    struct my_msg amsg;
+    amsg.is_first = true;
+    amsg.is_last  = false;
+    amsg.is_bin   = false;
+    amsg.len      = strlen(headers_);
+    amsg.payload  = malloc(LWS_PRE + amsg.len);
+    memcpy(amsg.payload + LWS_PRE, headers_, amsg.len);
+    vec_add(pss->v_write, &amsg);
+
+    size_t index = 0;
+
+    amsg.is_first = false;
+    amsg.len      = MY_PSS_SIZE;
+    for (index = 0; body_len > MY_PSS_SIZE && index < body_len - MY_PSS_SIZE;
+         index += MY_PSS_SIZE) {
+        amsg.payload = malloc(MY_PSS_SIZE + LWS_PRE);
+        memcpy(amsg.payload + LWS_PRE, body + index, MY_PSS_SIZE);
+        vec_add(pss->v_write, &amsg);
+    }
+
+    amsg.is_last = true;
+    amsg.len     = body_len - index;
+    amsg.payload = malloc(body_len - index + LWS_PRE);
+    memcpy(amsg.payload + LWS_PRE, body + index, body_len - index);
+    vec_add(pss->v_write, &amsg);
+
+    lws_callback_on_writable(wsi);
+    return strlen(headers_) + body_len;
+}
+
 size_t my_http_send_json(struct lws *wsi, int stt, struct json_object *json) {
     struct my_http_ss *pss = lws_wsi_user(wsi);
 
