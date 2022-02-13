@@ -239,10 +239,14 @@ int my_http_callback(struct lws *wsi, enum lws_callback_reasons reason,
             pss->v_read    = vec_new_r(struct my_msg, NULL, NULL, msg_drop);
             pss->v_write   = vec_new_r(struct my_msg, NULL, NULL, msg_drop);
 
-            if ((lws_hdr_total_length(wsi, WSI_TOKEN_GET_URI) ||
-                    lws_hdr_total_length(wsi, WSI_TOKEN_OPTIONS_URI)) &&
-                onrequest) {
+            if (!onrequest) break;
+            if (lws_hdr_total_length(wsi, WSI_TOKEN_GET_URI)) {
                 onrequest(wsi, pss->path, NULL, 0);
+            } else if (lws_hdr_total_length(wsi, WSI_TOKEN_OPTIONS_URI)) {
+                my_http_send(wsi, 200,
+                    "Access-Control-Allow-Origin: *\r\n"
+                    "Access-Control-Allow-Headers: content-type\r\n",
+                    "");
             }
             break;
 
