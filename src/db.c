@@ -158,6 +158,14 @@ db_file_t *db_file_get(PGconn *conn, uint64_t file_id, bool get_all_history) {
 
 db_content_version_t *db_file_update(PGconn *conn, uint64_t file_id,
     uint64_t update_by, size_t from, size_t to, const char *string) {
+
+    // check user permission
+    if (db_user_has_permission_on_file(conn, update_by, file_id, 3) == false) {
+        raise_error(403, "%s: user %ld permission denied", __func__, update_by);
+        return NULL;
+    }
+
+    // if user has edit permission
     char *new_content, *old_content;
     char  ids[3][21];
     sprintf(ids[0], "%ld", file_id);
@@ -461,6 +469,41 @@ db_user_pers_t *db_file_get_user_per(PGconn *conn, uint64_t user_id) {
     }
 
     return pers;
+}
+
+int db_get_user_permission_on_file(
+    PGconn *conn, uint64_t user_id, uint64_t file_id) {
+    char ids[2][21];
+    sprintf(ids[0], "%ld", user_id);
+    sprintf(ids[1], "%ld", file_id);
+
+    const char *params[] = {
+        ids[0],
+        ids[1],
+    };
+
+    PGresult *res = db_exec(conn,
+        "select permission_id from user_file_permissions\n"
+        "where user_id = $1 and file_id = $2",
+        2, params, PGRES_TUPLES_OK, 0, NULL);
+
+    int permission_type = 0;
+    if (res) {
+        permission_type = atoi(PQgetvalue(res, 0, 0));
+        PQclear(res);
+    }
+
+    return permission_type;
+}
+
+bool db_user_has_permission_on_file(
+    PGconn *conn, uint64_t user_id, uint64_t file_id, int permission_type) {
+    int user_permission =
+        db_get_user_permission_on_file(conn, user_id, file_id);
+    if (user_permission >= permission_type) {
+        return true;
+    }
+    return false;
 }
 
 db_user_t *db_user_add(PGconn *conn, const char *username, const char *passwd,

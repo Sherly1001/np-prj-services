@@ -89,6 +89,10 @@ bool db_file_set_user_per(
 
 db_file_pers_t *db_file_get_pers(PGconn *conn, uint64_t file_id);
 db_user_pers_t *db_file_get_user_per(PGconn *conn, uint64_t user_id);
+int             db_get_user_permission_on_file(
+                PGconn *conn, uint64_t user_id, uint64_t file_id);
+bool db_user_has_permission_on_file(
+    PGconn *conn, uint64_t user_id, uint64_t file_id, int permission_type);
 
 // [E]: create new user
 db_user_t *db_user_add(PGconn *conn, const char *username, const char *passwd,
