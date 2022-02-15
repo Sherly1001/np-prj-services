@@ -196,8 +196,6 @@ void remove_ws_from_file(vec_t *file_infos, struct lws *wsi) {
 
     vec_remove_by(pfi->wsis, &wsi);
     if (pfi->wsis->len == 0) {
-        vec_drop(pfi->wsis);
-        db_file_drop(pfi->file);
         vec_remove_by(file_infos, &fi);
     }
 }
@@ -597,8 +595,10 @@ void onmessage(struct lws *wsi, const void *msg, size_t len, bool is_bin) {
             goto __onmsg_error;
         }
 
-        struct file_info fi = {.file = &(db_file_t){.id = file->id},
-            .wsis = vec_new_r(struct lws *, NULL, NULL, NULL)};
+        struct file_info fi = {
+            .file = file,
+            .wsis = vec_new_r(struct lws *, NULL, NULL, NULL),
+        };
         vec_add(vhd->files, &fi);
         struct file_info *pfi =
             vec_get(vhd->files, vec_index_of(vhd->files, &fi));
@@ -611,6 +611,25 @@ void onmessage(struct lws *wsi, const void *msg, size_t len, bool is_bin) {
         sprintf(uid, "%lu", owner);
         sprintf(vid, "%lu", file->current_version);
 
+        struct json_object *contents = json_object_new_array();
+        struct json_object *version  = NULL;
+
+        for (db_content_version_t *ver = file->contents; ver; ver = ver->prev) {
+            version = json_object_new_object();
+
+            sprintf(vid, "%lu", ver->id);
+            sprintf(uid, "%lu", ver->update_by);
+
+            json_object_object_add(
+                version, "ver_id", json_object_new_string(vid));
+            json_object_object_add(version, "update_by",
+                ver->update_by != 0 ? json_object_new_string(uid) : NULL);
+            json_object_object_add(
+                version, "content", json_object_new_string(ver->content));
+
+            json_object_array_add(contents, version);
+        }
+
         json_object_object_add(
             new_file, "file_id", json_object_new_string(fid));
         json_object_object_add(new_file, "owner", json_object_new_string(uid));
@@ -620,8 +639,7 @@ void onmessage(struct lws *wsi, const void *msg, size_t len, bool is_bin) {
             new_file, "file_type", json_object_new_int(file_type));
         json_object_object_add(
             new_file, "everyone_can", json_object_new_int(file->everyone_can));
-        json_object_object_add(
-            new_file, "content", json_object_new_string(content));
+        json_object_object_add(new_file, "contents", contents);
 
         json_object_object_add(res, type, new_file);
         ws_send_res(wsi, res);
@@ -732,6 +750,29 @@ void onmessage(struct lws *wsi, const void *msg, size_t len, bool is_bin) {
         if (!ver_id) {
             goto __onmsg_error;
         }
+
+        pfi->file->contents->id        = ver_id;
+        pfi->file->current_version     = ver_id;
+        pfi->file->contents->update_by = user_id;
+
+        char *old_content = pfi->file->contents->content;
+
+        size_t new_len = strlen(old_content) + 1;
+        if (string) new_len += strlen(string);
+
+        char *new_content = malloc(new_len);
+        strcpy(new_content, pfi->file->contents->content);
+        new_content[from] = '\0';
+
+        if (string) { // insert
+            strcat(new_content, string);
+            strcat(new_content, old_content + from);
+        } else { // remove
+            strcat(new_content, old_content + to + 1);
+        }
+
+        free(pfi->file->contents->content);
+        pfi->file->contents->content = new_content;
 
         struct json_object *new_version = json_object_new_object();
         char                fid[21], uid[21], vid[21];

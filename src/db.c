@@ -85,11 +85,12 @@ db_file_t *db_file_create(PGconn *conn, uint64_t owner, uint16_t everyone_can,
     PQclear(res);
 
     db_content_version_t *contents = malloc(sizeof(db_content_version_t));
-    contents->content              = malloc(strlen(content) + 1);
-    strcpy(contents->content, content);
+
     contents->id        = ver_id;
     contents->update_by = owner;
     contents->prev      = NULL;
+    contents->content   = malloc(strlen(content) + 1);
+    strcpy(contents->content, content);
 
     db_file_t *file       = malloc(sizeof(db_file_t));
     file->id              = file_id;
