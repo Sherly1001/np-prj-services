@@ -85,7 +85,7 @@ db_file_t *db_file_create(PGconn *conn, uint64_t owner, uint16_t everyone_can,
     PQclear(res);
 
     db_content_version_t *contents = malloc(sizeof(db_content_version_t));
-    contents->content              = malloc(sizeof(content) + 1);
+    contents->content              = malloc(strlen(content) + 1);
     strcpy(contents->content, content);
     contents->id        = ver_id;
     contents->update_by = owner;
@@ -160,13 +160,20 @@ db_file_t *db_file_get(PGconn *conn, uint64_t file_id, bool get_all_history) {
     return file;
 }
 
-db_content_version_t *db_file_update(PGconn *conn, uint64_t file_id,
-    uint64_t update_by, size_t from, size_t to, const char *string) {
+uint64_t db_file_update(PGconn *conn, uint64_t file_id, uint64_t update_by,
+    size_t from, size_t to, const char *string) {
+
+    if (!__snf) {
+        raise_error(1001, "%s: not found id generator", __func__);
+        return 0;
+    }
+
+    uint64_t ver_id = snowflake_lock_id(__snf);
 
     // check user permission
     if (db_user_has_per_on_file(conn, update_by, file_id, 3) == false) {
-        raise_error(403, "%s: user %ld permission denied", __func__, update_by);
-        return NULL;
+        raise_error(330, "%s: user %ld permission denied", __func__, update_by);
+        return 0;
     }
 
     // if user has edit permission
@@ -174,8 +181,9 @@ db_content_version_t *db_file_update(PGconn *conn, uint64_t file_id,
     char  ids[3][21];
     sprintf(ids[0], "%ld", file_id);
     sprintf(ids[1], "%ld", update_by);
+    sprintf(ids[2], "%ld", ver_id);
 
-    const char *params[3] = {
+    const char *params[4] = {
         ids[0],
     };
 
@@ -185,28 +193,20 @@ db_content_version_t *db_file_update(PGconn *conn, uint64_t file_id,
         "inner join files on files.current_version = cv.id\n"
         "where file_id = $1",
         1, params, PGRES_TUPLES_OK, 0, NULL);
-    if (!res) return NULL;
+    if (!res) return 0;
 
     if (atoi(PQcmdTuples(res)) != 1) {
-        raise_error(309, "%s: file %ld not exist", __func__, file_id);
+        raise_error(331, "%s: file %ld not exist", __func__, file_id);
         PQclear(res);
-        return NULL;
+        return 0;
     }
 
     old_content    = PQgetvalue(res, 0, 1);
-    size_t old_len = strlen(old_content);
-    size_t new_len = strlen(old_content) + 1;
+    size_t old_len = PQgetlength(res, 0, 1);
+    size_t new_len = old_len + 1;
     if (string) { // insert
         new_len += strlen(string);
     }
-
-    db_content_version_t *version = malloc(sizeof(db_content_version_t));
-    version->id                   = atol(PQgetvalue(res, 0, 0));
-    version->file_id              = file_id;
-    version->update_by            = update_by;
-    version->content              = malloc(new_len);
-    strcpy(version->content, old_content);
-    version->prev = NULL;
 
     // insert/remove old content
     if (from > old_len) {
@@ -218,7 +218,8 @@ db_content_version_t *db_file_update(PGconn *conn, uint64_t file_id,
         to = old_len;
     }
 
-    new_content       = version->content;
+    new_content = malloc(new_len);
+    strcpy(new_content, old_content);
     new_content[from] = '\0';
 
     if (string) { // insert
@@ -229,25 +230,28 @@ db_content_version_t *db_file_update(PGconn *conn, uint64_t file_id,
     }
 
     // update content
-    sprintf(ids[2], "%ld", version->id);
-    params[2] = ids[2]; // version_id
-    params[0] = ids[1]; // update_by
-    params[1] = new_content;
+    params[0] = ids[2];                         // ver_id
+    params[1] = ids[0];                         // file_id
+    params[2] = update_by == 0 ? NULL : ids[1]; // update_by
+    params[3] = new_content;
 
     PQclear(res);
     res = db_exec(conn,
-        "update content_versions\n"
-        "set update_by = $1, content = $2::text\n"
-        "where id = $3",
-        3, params, PGRES_COMMAND_OK, 404, __func__);
-    if (!res) return NULL;
-    PQclear(res);
+        "insert into content_versions values ($1, $2, $3, $4::text)", 4, params,
+        PGRES_COMMAND_OK, 332, __func__);
+    if (!res) return 0;
 
-    return version;
+    PQclear(res);
+    res = db_exec(conn, "update files set current_version = $1 where id = $2",
+        2, params, PGRES_COMMAND_OK, 333, __func__);
+    if (!res) return 0;
+
+    PQclear(res);
+    return ver_id;
 }
 
-db_content_version_t *db_file_save(PGconn *conn, uint64_t file_id,
-    const uint64_t user_id, const char *content) {
+uint64_t db_file_save(PGconn *conn, uint64_t file_id, const uint64_t user_id,
+    const char *content) {
 
     if (!__snf) {
         raise_error(1001, "%s: not found id generator", __func__);
@@ -271,12 +275,12 @@ db_content_version_t *db_file_save(PGconn *conn, uint64_t file_id,
     PGresult *res =
         db_exec(conn, "insert into content_versions values ($1, $2, $3, $4)", 4,
             params, PGRES_COMMAND_OK, 306, __func__);
-    if (!res) return NULL;
+    if (!res) return 0;
     PQclear(res);
 
     res = db_exec(conn, "update files set current_version = $1 where id = $2",
         2, params, PGRES_COMMAND_OK, 307, __func__);
-    if (!res) return NULL;
+    if (!res) return 0;
     PQclear(res);
 
     params[0] = ids[1];
@@ -286,18 +290,10 @@ db_content_version_t *db_file_save(PGconn *conn, uint64_t file_id,
         "inner join files on current_version = cv.id\n"
         "where file_id = $1",
         1, params, PGRES_TUPLES_OK, 0, NULL);
-    if (!res) return NULL;
-
-    db_content_version_t *version = malloc(sizeof(db_content_version_t));
-    version->id                   = atol(PQgetvalue(res, 0, 0));
-    version->file_id              = file_id;
-    version->update_by            = user_id;
-    version->content              = malloc(strlen(content) + 1);
-    strcpy(version->content, content);
-    version->prev = NULL;
+    if (!res) return 0;
 
     PQclear(res);
-    return version;
+    return ver_id;
 }
 
 bool db_file_delete(PGconn *conn, uint64_t file_id) {

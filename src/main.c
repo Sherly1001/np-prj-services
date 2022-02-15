@@ -639,9 +639,8 @@ void onmessage(struct lws *wsi, const void *msg, size_t len, bool is_bin) {
         }
         vec_add(pfi->wsis, &wsi);
 
-        db_content_version_t *version =
-            db_file_save(conn, file_id, user_id, content);
-        if (!version) {
+        uint64_t ver_id = db_file_save(conn, file_id, user_id, content);
+        if (!ver_id) {
             goto __onmsg_error;
         }
 
@@ -649,7 +648,7 @@ void onmessage(struct lws *wsi, const void *msg, size_t len, bool is_bin) {
         char                fid[21], uid[21], vid[21];
 
         sprintf(fid, "%lu", file_id);
-        sprintf(vid, "%lu", version->id);
+        sprintf(vid, "%lu", ver_id);
         sprintf(uid, "%lu", user_id);
 
         json_object_object_add(
@@ -664,7 +663,6 @@ void onmessage(struct lws *wsi, const void *msg, size_t len, bool is_bin) {
         json_object_object_add(res, type, new_version);
 
         ws_broadcast_res_with_file(pfi->wsis, wsi, res);
-        db_content_version_drop(version);
     } else {
         // type: insert, remove
         uint64_t file_id = atol(
@@ -704,9 +702,9 @@ void onmessage(struct lws *wsi, const void *msg, size_t len, bool is_bin) {
         }
         vec_add(pfi->wsis, &wsi);
 
-        db_content_version_t *version =
+        uint64_t ver_id =
             db_file_update(conn, file_id, user_id, from, to, string);
-        if (!version) {
+        if (!ver_id) {
             goto __onmsg_error;
         }
 
@@ -714,15 +712,15 @@ void onmessage(struct lws *wsi, const void *msg, size_t len, bool is_bin) {
         char                fid[21], uid[21], vid[21];
 
         sprintf(fid, "%lu", file_id);
-        sprintf(vid, "%lu", version->id);
+        sprintf(vid, "%lu", ver_id);
         sprintf(uid, "%lu", user_id);
 
         json_object_object_add(
             new_version, "file_id", json_object_new_string(fid));
         json_object_object_add(
-            new_version, "version_id", json_object_new_string(vid));
-        json_object_object_add(
-            new_version, "update_by", json_object_new_string(uid));
+            new_version, "ver_id", json_object_new_string(vid));
+        json_object_object_add(new_version, "update_by",
+            user_id == 0 ? NULL : json_object_new_string(uid));
         json_object_object_add(new_version, "from", json_object_new_int(from));
         json_object_object_add(new_version, "to", json_object_new_int(to));
         if (CMD_IS_TYPE_OF(type, CMD_INSERT)) {
@@ -733,7 +731,6 @@ void onmessage(struct lws *wsi, const void *msg, size_t len, bool is_bin) {
         json_object_object_add(res, type, new_version);
 
         ws_broadcast_res_with_file(pfi->wsis, wsi, res);
-        db_content_version_drop(version);
     }
 
     goto __onmsg_drops;
