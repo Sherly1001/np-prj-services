@@ -182,12 +182,35 @@ void onopen(struct lws *wsi) {
     json_object_put(res);
 }
 
+// file_infos: Vec<struct file_info>
+void remove_ws_from_file(vec_t *file_infos, struct lws *wsi) {
+    struct my_per_session_data *pss = lws_wsi_user(wsi);
+    if (!pss->file) return;
+
+    struct file_info fi = {
+        .file = &(db_file_t){.id = pss->file->id},
+        .wsis = NULL,
+    };
+    struct file_info *pfi = vec_get(file_infos, vec_index_of(file_infos, &fi));
+    if (!pfi || pfi->wsis == NULL) return;
+
+    vec_remove_by(pfi->wsis, &wsi);
+    if (pfi->wsis->len == 0) {
+        vec_drop(pfi->wsis);
+        db_file_drop(pfi->file);
+        vec_remove_by(file_infos, &fi);
+    }
+}
+
 void onclose(struct lws *wsi) {
     struct my_per_session_data *pss = lws_wsi_user(wsi);
+    struct my_per_vhost_data   *vhd =
+        lws_protocol_vh_priv_get(lws_get_vhost(wsi), lws_get_protocol(wsi));
 
     lwsl_warn("connection closed: %p: user: %s", wsi,
         pss->user ? pss->user->username : NULL);
 
+    remove_ws_from_file(vhd->files, wsi);
     db_user_drop(pss->user);
 }
 
@@ -322,6 +345,7 @@ void onmessage(struct lws *wsi, const void *msg, size_t len, bool is_bin) {
         }
 
         vec_add(pfi->wsis, &wsi);
+        remove_ws_from_file(vhd->files, wsi);
         pss->file = pfi->file;
 
         db_file_t *file = pfi->file;
@@ -392,6 +416,7 @@ void onmessage(struct lws *wsi, const void *msg, size_t len, bool is_bin) {
         }
 
         vec_add(pfi->wsis, &wsi);
+        remove_ws_from_file(vhd->files, wsi);
         pss->file = pfi->file;
 
         db_file_pers_t *file_pers = db_file_get_pers(conn, file_id);
