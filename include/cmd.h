@@ -27,8 +27,12 @@ static const char cmd_types[][50] = {
     "set-file-per, %s %ld",
     "set-user-per, %s %s %ld",
     "get-per-types, ",
+    // "get-user-per-on-file, %s %s",
 
     "login, %s",
+
+    "create-file, %s %ld %ld %s",
+    "delete-file, %s",
 };
 
 #define CMD_INSERT         "insert"
@@ -42,6 +46,10 @@ static const char cmd_types[][50] = {
 #define CMD_SET_FILE_PER  "set-file-per"
 #define CMD_SET_USER_PER  "set-user-per"
 #define CMD_GET_PER_TYPES "get-per-types"
+// #define CMD_GET_USER_PER_ON_FILE "get-user-per-on-file"
+
+#define CMD_FILE_CREATE "create-file"
+#define CMD_FILE_DELETE "delete-file"
 
 #define CMD_LOGIN "login"
 

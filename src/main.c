@@ -502,6 +502,62 @@ void onmessage(struct lws *wsi, const void *msg, size_t len, bool is_bin) {
         json_object_object_add(
             res, CMD_SET_USER_PER, json_object_new_boolean(result));
         ws_send_res(wsi, res);
+    } else if (CMD_IS_TYPE_OF(type, CMD_FILE_CREATE)) {
+        uint64_t owner = atol(
+            json_object_get_string(json_object_array_get_idx(cmd->args, 0)));
+        int everyone_can =
+            json_object_get_int(json_object_array_get_idx(cmd->args, 1));
+        int file_type =
+            json_object_get_int(json_object_array_get_idx(cmd->args, 2));
+        const char *content =
+            json_object_get_string(json_object_array_get_idx(cmd->args, 3));
+
+        db_file_t *file =
+            db_file_create(conn, owner, everyone_can, content, file_type);
+        if (!file) {
+            goto __onmsg_error;
+        }
+
+        struct file_info fi = {.file = &(db_file_t){.id = file->id},
+            .wsis = vec_new_r(struct lws *, NULL, NULL, NULL)};
+        vec_add(vhd->files, &fi);
+        struct file_info *pfi =
+            vec_get(vhd->files, vec_index_of(vhd->files, &fi));
+        vec_add(pfi->wsis, &wsi);
+
+        struct json_object *new_file = json_object_new_object();
+        char                fid[21], uid[21], vid[21];
+
+        sprintf(fid, "%lu", file->id);
+        sprintf(uid, "%lu", owner);
+        sprintf(vid, "%lu", file->current_version);
+
+        json_object_object_add(
+            new_file, "file_id", json_object_new_string(fid));
+        json_object_object_add(new_file, "owner", json_object_new_string(uid));
+        json_object_object_add(
+            new_file, "version_id", json_object_new_string(vid));
+        json_object_object_add(
+            new_file, "file_type", json_object_new_int(file_type));
+        json_object_object_add(
+            new_file, "everyone_can", json_object_new_int(file->everyone_can));
+        json_object_object_add(
+            new_file, "content", json_object_new_string(content));
+
+        json_object_object_add(res, type, new_file);
+        ws_send_res(wsi, res);
+        db_file_drop(file);
+    } else if (CMD_IS_TYPE_OF(type, CMD_FILE_DELETE)) {
+        uint64_t file_id = atol(
+            json_object_get_string(json_object_array_get_idx(cmd->args, 0)));
+
+        bool result = db_file_delete(conn, file_id);
+        if (!result) {
+            goto __onmsg_error;
+        }
+
+        json_object_object_add(res, type, json_object_new_boolean(result));
+        ws_send_res(wsi, res);
     } else if (CMD_IS_TYPE_OF(type, CMD_SAVE)) {
         uint64_t file_id = atol(
             json_object_get_string(json_object_array_get_idx(cmd->args, 0)));
@@ -548,8 +604,7 @@ void onmessage(struct lws *wsi, const void *msg, size_t len, bool is_bin) {
         json_object_object_add(
             new_version, "content", json_object_new_string(content));
 
-        json_object_object_add(res, "type", json_object_new_string(type));
-        json_object_object_add(res, "new_version", new_version);
+        json_object_object_add(res, type, new_version);
 
         ws_broadcast_res(wsi, NULL, res); // except: NULL // need fix
         db_content_version_drop(version);
@@ -615,9 +670,7 @@ void onmessage(struct lws *wsi, const void *msg, size_t len, bool is_bin) {
                 new_version, "string", json_object_new_string(string));
         }
 
-        json_object_object_add(res, "type", json_object_new_string(type));
-        json_object_object_add(res, "new_version", new_version);
-
+        json_object_object_add(res, type, new_version);
         ws_broadcast_res(wsi, NULL, res); // except: NULL // need fix
         db_content_version_drop(version);
     }

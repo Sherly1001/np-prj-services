@@ -41,6 +41,10 @@ db_file_t *db_file_create(PGconn *conn, uint64_t owner, uint16_t everyone_can,
     uint64_t file_id = snowflake_lock_id(__snf);
     uint64_t ver_id  = snowflake_lock_id(__snf);
 
+    if (owner == 0) {
+        everyone_can = 3;
+    }
+
     char ids[5][21];
     sprintf(ids[0], "%ld", file_id);
     sprintf(ids[1], "%ld", ver_id);
@@ -160,7 +164,7 @@ db_content_version_t *db_file_update(PGconn *conn, uint64_t file_id,
     uint64_t update_by, size_t from, size_t to, const char *string) {
 
     // check user permission
-    if (db_user_has_permission_on_file(conn, update_by, file_id, 3) == false) {
+    if (db_user_has_per_on_file(conn, update_by, file_id, 3) == false) {
         raise_error(403, "%s: user %ld permission denied", __func__, update_by);
         return NULL;
     }
@@ -471,35 +475,52 @@ db_user_pers_t *db_file_get_user_per(PGconn *conn, uint64_t user_id) {
     return pers;
 }
 
-int db_get_user_permission_on_file(
-    PGconn *conn, uint64_t user_id, uint64_t file_id) {
+int db_get_user_per_on_file(PGconn *conn, uint64_t user_id, uint64_t file_id) {
     char ids[2][21];
-    sprintf(ids[0], "%ld", user_id);
-    sprintf(ids[1], "%ld", file_id);
+    sprintf(ids[0], "%ld", file_id);
+    sprintf(ids[1], "%ld", user_id);
 
     const char *params[] = {
         ids[0],
         ids[1],
     };
 
+    // if user is file owner -> permission = 3
     PGresult *res = db_exec(conn,
+        "select owner from files\n"
+        "where id = $1 and owner = $2",
+        2, params, PGRES_TUPLES_OK, 0, NULL);
+    if (PQntuples(res) == 1) {
+        PQclear(res);
+        return 3;
+    }
+
+    // if else user has per in user_file_permissions
+    PQclear(res);
+    res = db_exec(conn,
         "select permission_id from user_file_permissions\n"
-        "where user_id = $1 and file_id = $2",
+        "where file_id = $1 and user_id = $2",
         2, params, PGRES_TUPLES_OK, 0, NULL);
 
-    int permission_type = 0;
-    if (res) {
-        permission_type = atoi(PQgetvalue(res, 0, 0));
+    if (PQntuples(res) == 1) {
         PQclear(res);
+        return atoi(PQgetvalue(res, 0, 0));
     }
+
+    // else everyone_can
+    PQclear(res);
+    res = db_exec(conn, "select everyone_can from files where files.id = $1", 1,
+        params, PGRES_TUPLES_OK, 0, NULL);
+
+    int permission_type = atoi(PQgetvalue(res, 0, 0));
+    PQclear(res);
 
     return permission_type;
 }
 
-bool db_user_has_permission_on_file(
+bool db_user_has_per_on_file(
     PGconn *conn, uint64_t user_id, uint64_t file_id, int permission_type) {
-    int user_permission =
-        db_get_user_permission_on_file(conn, user_id, file_id);
+    int user_permission = db_get_user_per_on_file(conn, user_id, file_id);
     if (user_permission >= permission_type) {
         return true;
     }
