@@ -117,6 +117,22 @@ size_t ws_broadcast_res(
     return my_ws_send_all(wsi, except, res_s, strlen(res_s), false);
 }
 
+size_t ws_broadcast_res_with_file(
+    vec_t *wsis, struct lws *expect, struct json_object *res) {
+
+    size_t max = 0;
+    for (size_t i = 0; i < wsis->len; ++i) {
+        struct lws **pwsi = vec_get(wsis, i);
+        if (*pwsi == expect) continue;
+        size_t rs = ws_send_res(*pwsi, res);
+        if (rs > max) {
+            max = rs;
+        }
+    }
+
+    return max;
+}
+
 void onopen(struct lws *wsi) {
     struct my_per_session_data *pss = lws_wsi_user(wsi);
 
@@ -503,20 +519,37 @@ void onmessage(struct lws *wsi, const void *msg, size_t len, bool is_bin) {
             res, CMD_SET_USER_PER, json_object_new_boolean(result));
         ws_send_res(wsi, res);
     } else if (CMD_IS_TYPE_OF(type, CMD_SET_USER_POINTER)) {
+        uint64_t file_id =
+            json_object_get_uint64(json_object_array_get_idx(cmd->args, 0));
         int offset =
-            json_object_get_int(json_object_array_get_idx(cmd->args, 0));
+            json_object_get_int(json_object_array_get_idx(cmd->args, 1));
+
+        struct file_info fi = {
+            .file = &(db_file_t){.id = file_id},
+            .wsis = NULL,
+        };
+
+        struct file_info *pfi =
+            vec_get(vhd->files, vec_index_of(vhd->files, &fi));
+
+        if (!pfi || vec_index_of(pfi->wsis, &wsi) == -1lu) {
+            raise_error(402, "%s: file not open", __func__);
+            goto __onmsg_error;
+        }
 
         char wid[21];
         sprintf(wid, "%lu", (uint64_t)wsi);
 
         json_object *user_pointer = json_object_new_object();
+        json_object_object_add(user_pointer, "username",
+            pss->user ? json_object_new_string(pss->user->username) : NULL);
         json_object_object_add(
             user_pointer, "wsi_id", json_object_new_string(wid));
         json_object_object_add(
             user_pointer, "offset", json_object_new_int(offset));
 
         json_object_object_add(res, type, user_pointer);
-        ws_broadcast_res(wsi, NULL, res); // except: NULL // need fix
+        ws_broadcast_res_with_file(pfi->wsis, wsi, res);
     } else if (CMD_IS_TYPE_OF(type, CMD_FILE_CREATE)) {
         uint64_t owner = atol(
             json_object_get_string(json_object_array_get_idx(cmd->args, 0)));
