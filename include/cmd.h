@@ -15,25 +15,18 @@ typedef const char *cmd_type_t;
 
 #define CMD_IS_TYPE_OF(type, of) (strcmp(type, of) == 0)
 
-static const char cmd_types[][50] = {
-    "insert, %s %s %ld %ld %s",
-    "remove, %s %s %ld %ld",
-    "save, %s %s %s",
-    "get, %s %u",
-    "get-file-types, ",
+static const char cmd_types[][50] = {"insert, %s %s %ld %ld %s",
+    "remove, %s %s %ld %ld", "save, %s %s %s", "get, %s %u", "get-file-types, ",
 
-    "get-user-pers, ",
-    "get-file-pers, %s",
-    "set-file-per, %s %ld",
-    "set-user-per, %s %s %ld",
-    "get-per-types, ",
+    "get-user-pers, ", "get-file-pers, %s", "set-file-per, %s %ld",
+    "set-user-per, %s %s %ld", "get-per-types, ",
     // "get-user-per-on-file, %s %s",
 
     "login, %s",
 
-    "create-file, %s %ld %ld %s",
-    "delete-file, %s",
-};
+    "create-file, %s %ld %ld %s", "delete-file, %s",
+
+    "set-user-pointer, %ld"};
 
 #define CMD_INSERT         "insert"
 #define CMD_REMOVE         "remove"
@@ -52,6 +45,8 @@ static const char cmd_types[][50] = {
 #define CMD_FILE_DELETE "delete-file"
 
 #define CMD_LOGIN "login"
+
+#define CMD_SET_USER_POINTER "set-user-pointer"
 
 #define CMD_ARG_IS_KIND_OF(kind, of) (strcmp(kind, of) == 0)
 

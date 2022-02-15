@@ -502,6 +502,21 @@ void onmessage(struct lws *wsi, const void *msg, size_t len, bool is_bin) {
         json_object_object_add(
             res, CMD_SET_USER_PER, json_object_new_boolean(result));
         ws_send_res(wsi, res);
+    } else if (CMD_IS_TYPE_OF(type, CMD_SET_USER_POINTER)) {
+        int offset =
+            json_object_get_int(json_object_array_get_idx(cmd->args, 0));
+
+        char wid[21];
+        sprintf(wid, "%lu", (uint64_t)wsi);
+
+        json_object *user_pointer = json_object_new_object();
+        json_object_object_add(
+            user_pointer, "wsi_id", json_object_new_string(wid));
+        json_object_object_add(
+            user_pointer, "offset", json_object_new_int(offset));
+
+        json_object_object_add(res, type, user_pointer);
+        ws_broadcast_res(wsi, NULL, res); // except: NULL // need fix
     } else if (CMD_IS_TYPE_OF(type, CMD_FILE_CREATE)) {
         uint64_t owner = atol(
             json_object_get_string(json_object_array_get_idx(cmd->args, 0)));
