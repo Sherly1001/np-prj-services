@@ -307,7 +307,6 @@ void onmessage(struct lws *wsi, const void *msg, size_t len, bool is_bin) {
             .file = &(db_file_t){.id = file_id},
             .wsis = NULL,
         };
-
         struct file_info *pfi =
             vec_get(vhd->files, vec_index_of(vhd->files, &fi));
 
@@ -375,7 +374,9 @@ void onmessage(struct lws *wsi, const void *msg, size_t len, bool is_bin) {
             json_object_get_string(json_object_array_get_idx(cmd->args, 0)));
 
         struct file_info fi = {
-            .file = &(db_file_t){.id = file_id}, .wsis = NULL};
+            .file = &(db_file_t){.id = file_id},
+            .wsis = NULL,
+        };
         struct file_info *pfi =
             vec_get(vhd->files, vec_index_of(vhd->files, &fi));
 
@@ -463,9 +464,12 @@ void onmessage(struct lws *wsi, const void *msg, size_t len, bool is_bin) {
             json_object_get_int64(json_object_array_get_idx(cmd->args, 1));
 
         struct file_info fi = {
-            .file = &(db_file_t){.id = file_id}, .wsis = NULL};
+            .file = &(db_file_t){.id = file_id},
+            .wsis = NULL,
+        };
         struct file_info *pfi =
             vec_get(vhd->files, vec_index_of(vhd->files, &fi));
+
         if (!pfi) {
             fi.file = db_file_get(conn, file_id, false);
             if (!fi.file) {
@@ -495,9 +499,12 @@ void onmessage(struct lws *wsi, const void *msg, size_t len, bool is_bin) {
             json_object_get_int64(json_object_array_get_idx(cmd->args, 2));
 
         struct file_info fi = {
-            .file = &(db_file_t){.id = file_id}, .wsis = NULL};
+            .file = &(db_file_t){.id = file_id},
+            .wsis = NULL,
+        };
         struct file_info *pfi =
             vec_get(vhd->files, vec_index_of(vhd->files, &fi));
+
         if (!pfi) {
             fi.file = db_file_get(conn, file_id, false);
             if (!fi.file) {
@@ -528,7 +535,6 @@ void onmessage(struct lws *wsi, const void *msg, size_t len, bool is_bin) {
             .file = &(db_file_t){.id = file_id},
             .wsis = NULL,
         };
-
         struct file_info *pfi =
             vec_get(vhd->files, vec_index_of(vhd->files, &fi));
 
@@ -615,9 +621,12 @@ void onmessage(struct lws *wsi, const void *msg, size_t len, bool is_bin) {
             json_object_get_string(json_object_array_get_idx(cmd->args, 2));
 
         struct file_info fi = {
-            .file = &(db_file_t){.id = file_id}, .wsis = NULL};
+            .file = &(db_file_t){.id = file_id},
+            .wsis = NULL,
+        };
         struct file_info *pfi =
             vec_get(vhd->files, vec_index_of(vhd->files, &fi));
+
         if (!pfi) {
             fi.file = db_file_get(conn, file_id, false);
             if (!fi.file) {
@@ -654,7 +663,7 @@ void onmessage(struct lws *wsi, const void *msg, size_t len, bool is_bin) {
 
         json_object_object_add(res, type, new_version);
 
-        ws_broadcast_res(wsi, NULL, res); // except: NULL // need fix
+        ws_broadcast_res_with_file(pfi->wsis, wsi, res);
         db_content_version_drop(version);
     } else {
         // type: insert, remove
@@ -677,9 +686,12 @@ void onmessage(struct lws *wsi, const void *msg, size_t len, bool is_bin) {
         }
 
         struct file_info fi = {
-            .file = &(db_file_t){.id = file_id}, .wsis = NULL};
+            .file = &(db_file_t){.id = file_id},
+            .wsis = NULL,
+        };
         struct file_info *pfi =
             vec_get(vhd->files, vec_index_of(vhd->files, &fi));
+
         if (!pfi) {
             fi.file = db_file_get(conn, file_id, false);
             if (!fi.file) {
@@ -719,7 +731,8 @@ void onmessage(struct lws *wsi, const void *msg, size_t len, bool is_bin) {
         }
 
         json_object_object_add(res, type, new_version);
-        ws_broadcast_res(wsi, NULL, res); // except: NULL // need fix
+
+        ws_broadcast_res_with_file(pfi->wsis, wsi, res);
         db_content_version_drop(version);
     }
 
