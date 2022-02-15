@@ -202,7 +202,46 @@ void onmessage(struct lws *wsi, const void *msg, size_t len, bool is_bin) {
 
     cmd_show(cmd);
     const char *type = json_object_get_string(cmd->type);
-    if (CMD_IS_TYPE_OF(type, CMD_GET_FILE_TYPES)) {
+    if (CMD_IS_TYPE_OF(type, CMD_LOGIN)) {
+        const char *token =
+            json_object_get_string(json_object_array_get_idx(cmd->args, 0));
+
+        uint64_t uid = 0;
+        if (jwt_decode(token, secret_key, &uid)) {
+            db_user_drop(pss->user);
+            pss->user = db_user_get(conn, uid, NULL);
+        } else {
+            pss->user = NULL;
+        }
+
+        struct json_object *acpt = json_object_new_object();
+        struct json_object *user = NULL;
+
+        if (pss->user) {
+            user = json_object_new_object();
+            char uid[21];
+            sprintf(uid, "%lu", pss->user->id);
+            json_object_object_add(user, "id", json_object_new_string(uid));
+            json_object_object_add(
+                user, "username", json_object_new_string(pss->user->username));
+            json_object_object_add(user, "email",
+                pss->user->email ? json_object_new_string(pss->user->email)
+                                 : NULL);
+            json_object_object_add(user, "avatar_url",
+                pss->user->avatar_url
+                    ? json_object_new_string(pss->user->avatar_url)
+                    : NULL);
+        }
+
+        char ws_id[21];
+        sprintf(ws_id, "%lu", (uint64_t)wsi);
+        json_object_object_add(acpt, "ws_id", json_object_new_string(ws_id));
+        json_object_object_add(acpt, "user", user);
+        json_object_object_add(res, "accept", acpt);
+
+        ws_send_res(wsi, res);
+
+    } else if (CMD_IS_TYPE_OF(type, CMD_GET_FILE_TYPES)) {
         struct json_object *arr = json_object_new_array();
         struct json_object *arr_elm;
 

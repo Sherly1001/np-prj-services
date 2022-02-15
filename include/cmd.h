@@ -27,6 +27,8 @@ static const char cmd_types[][50] = {
     "set-file-per, %s %ld",
     "set-user-per, %s %s %ld",
     "get-per-types, ",
+
+    "login, %s",
 };
 
 #define CMD_INSERT         "insert"
@@ -40,6 +42,8 @@ static const char cmd_types[][50] = {
 #define CMD_SET_FILE_PER  "set-file-per"
 #define CMD_SET_USER_PER  "set-user-per"
 #define CMD_GET_PER_TYPES "get-per-types"
+
+#define CMD_LOGIN "login"
 
 #define CMD_ARG_IS_KIND_OF(kind, of) (strcmp(kind, of) == 0)
 
