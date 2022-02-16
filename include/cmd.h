@@ -34,7 +34,7 @@ static const char cmd_types[][50] = {
     "create-file, %s %ld %ld %s",
     "delete-file, %s",
 
-    "set-user-pointer, %s %ld",
+    "set-user-pointer, %s %ld %ld",
 };
 
 #define CMD_INSERT         "insert"

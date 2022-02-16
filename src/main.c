@@ -194,6 +194,11 @@ void remove_ws_from_file(vec_t *file_infos, struct lws *wsi) {
     struct file_info *pfi = vec_get(file_infos, vec_index_of(file_infos, &fi));
     if (!pfi || pfi->wsis == NULL) return;
 
+    struct json_object *res = json_object_new_object();
+    json_object_object_add(res, CMD_SET_USER_POINTER, NULL);
+    ws_broadcast_res_with_file(pfi->wsis, wsi, res);
+    json_object_put(res);
+
     vec_remove_by(pfi->wsis, &wsi);
     if (pfi->wsis->len == 0) {
         vec_remove_by(file_infos, &fi);
@@ -551,8 +556,9 @@ void onmessage(struct lws *wsi, const void *msg, size_t len, bool is_bin) {
     } else if (CMD_IS_TYPE_OF(type, CMD_SET_USER_POINTER)) {
         uint64_t file_id =
             json_object_get_uint64(json_object_array_get_idx(cmd->args, 0));
-        int offset =
-            json_object_get_int(json_object_array_get_idx(cmd->args, 1));
+        int row = json_object_get_int(json_object_array_get_idx(cmd->args, 1));
+        int column =
+            json_object_get_int(json_object_array_get_idx(cmd->args, 2));
 
         struct file_info fi = {
             .file = &(db_file_t){.id = file_id},
@@ -573,9 +579,10 @@ void onmessage(struct lws *wsi, const void *msg, size_t len, bool is_bin) {
         json_object_object_add(user_pointer, "username",
             pss->user ? json_object_new_string(pss->user->username) : NULL);
         json_object_object_add(
-            user_pointer, "wsi_id", json_object_new_string(wid));
+            user_pointer, "ws_id", json_object_new_string(wid));
+        json_object_object_add(user_pointer, "row", json_object_new_int(row));
         json_object_object_add(
-            user_pointer, "offset", json_object_new_int(offset));
+            user_pointer, "column", json_object_new_int(column));
 
         json_object_object_add(res, type, user_pointer);
         ws_broadcast_res_with_file(pfi->wsis, wsi, res);
