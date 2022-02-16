@@ -714,7 +714,8 @@ void onmessage(struct lws *wsi, const void *msg, size_t len, bool is_bin) {
             json_object_get_string(json_object_array_get_idx(cmd->args, 1)));
         int from = json_object_get_int(json_object_array_get_idx(cmd->args, 2));
         int to   = json_object_get_int(json_object_array_get_idx(cmd->args, 3));
-        const char *string = NULL;
+        struct json_object *event  = NULL;
+        const char         *string = NULL;
 
         if (from < 0 || (to > 0 && to < from)) {
             raise_error(400, "%s: invalid offset", __func__);
@@ -724,7 +725,13 @@ void onmessage(struct lws *wsi, const void *msg, size_t len, bool is_bin) {
         if (CMD_IS_TYPE_OF(type, CMD_INSERT)) {
             string =
                 json_object_get_string(json_object_array_get_idx(cmd->args, 4));
+            json_object_deep_copy(json_object_array_get_idx(cmd->args, 5),
+                &event, json_c_shallow_copy_default);
+        } else {
+            json_object_deep_copy(json_object_array_get_idx(cmd->args, 4),
+                &event, json_c_shallow_copy_default);
         }
+        json_object_object_add(res, "event", event);
 
         struct file_info fi = {
             .file = &(db_file_t){.id = file_id},
@@ -757,8 +764,19 @@ void onmessage(struct lws *wsi, const void *msg, size_t len, bool is_bin) {
 
         char *old_content = pfi->file->contents->content;
 
+        size_t old_len = strlen(old_content);
         size_t new_len = strlen(old_content) + 1;
         if (string) new_len += strlen(string);
+
+        // insert/remove old content
+        if ((size_t)from > old_len) {
+            from = old_len;
+            to   = from;
+        }
+
+        if ((size_t)to > old_len - 1) {
+            to = old_len;
+        }
 
         char *new_content = malloc(new_len);
         strcpy(new_content, pfi->file->contents->content);
