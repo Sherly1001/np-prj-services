@@ -117,6 +117,22 @@ size_t ws_broadcast_res(
     return my_ws_send_all(wsi, except, res_s, strlen(res_s), false);
 }
 
+size_t ws_broadcast_res_with_file(
+    vec_t *wsis, struct lws *expect, struct json_object *res) {
+
+    size_t max = 0;
+    for (size_t i = 0; i < wsis->len; ++i) {
+        struct lws **pwsi = vec_get(wsis, i);
+        if (*pwsi == expect) continue;
+        size_t rs = ws_send_res(*pwsi, res);
+        if (rs > max) {
+            max = rs;
+        }
+    }
+
+    return max;
+}
+
 void onopen(struct lws *wsi) {
     struct my_per_session_data *pss = lws_wsi_user(wsi);
 
@@ -166,12 +182,38 @@ void onopen(struct lws *wsi) {
     json_object_put(res);
 }
 
+// file_infos: Vec<struct file_info>
+void remove_ws_from_file(vec_t *file_infos, struct lws *wsi) {
+    struct my_per_session_data *pss = lws_wsi_user(wsi);
+    if (!pss->file) return;
+
+    struct file_info fi = {
+        .file = &(db_file_t){.id = pss->file->id},
+        .wsis = NULL,
+    };
+    struct file_info *pfi = vec_get(file_infos, vec_index_of(file_infos, &fi));
+    if (!pfi || pfi->wsis == NULL) return;
+
+    struct json_object *res = json_object_new_object();
+    json_object_object_add(res, CMD_SET_USER_POINTER, NULL);
+    ws_broadcast_res_with_file(pfi->wsis, wsi, res);
+    json_object_put(res);
+
+    vec_remove_by(pfi->wsis, &wsi);
+    if (pfi->wsis->len == 0) {
+        vec_remove_by(file_infos, &fi);
+    }
+}
+
 void onclose(struct lws *wsi) {
     struct my_per_session_data *pss = lws_wsi_user(wsi);
+    struct my_per_vhost_data   *vhd =
+        lws_protocol_vh_priv_get(lws_get_vhost(wsi), lws_get_protocol(wsi));
 
     lwsl_warn("connection closed: %p: user: %s", wsi,
         pss->user ? pss->user->username : NULL);
 
+    remove_ws_from_file(vhd->files, wsi);
     db_user_drop(pss->user);
 }
 
@@ -202,7 +244,46 @@ void onmessage(struct lws *wsi, const void *msg, size_t len, bool is_bin) {
 
     cmd_show(cmd);
     const char *type = json_object_get_string(cmd->type);
-    if (CMD_IS_TYPE_OF(type, CMD_GET_FILE_TYPES)) {
+    if (CMD_IS_TYPE_OF(type, CMD_LOGIN)) {
+        const char *token =
+            json_object_get_string(json_object_array_get_idx(cmd->args, 0));
+
+        uint64_t uid = 0;
+        if (jwt_decode(token, secret_key, &uid)) {
+            db_user_drop(pss->user);
+            pss->user = db_user_get(conn, uid, NULL);
+        } else {
+            pss->user = NULL;
+        }
+
+        struct json_object *acpt = json_object_new_object();
+        struct json_object *user = NULL;
+
+        if (pss->user) {
+            user = json_object_new_object();
+            char uid[21];
+            sprintf(uid, "%lu", pss->user->id);
+            json_object_object_add(user, "id", json_object_new_string(uid));
+            json_object_object_add(
+                user, "username", json_object_new_string(pss->user->username));
+            json_object_object_add(user, "email",
+                pss->user->email ? json_object_new_string(pss->user->email)
+                                 : NULL);
+            json_object_object_add(user, "avatar_url",
+                pss->user->avatar_url
+                    ? json_object_new_string(pss->user->avatar_url)
+                    : NULL);
+        }
+
+        char ws_id[21];
+        sprintf(ws_id, "%lu", (uint64_t)wsi);
+        json_object_object_add(acpt, "ws_id", json_object_new_string(ws_id));
+        json_object_object_add(acpt, "user", user);
+        json_object_object_add(res, "accept", acpt);
+
+        ws_send_res(wsi, res);
+
+    } else if (CMD_IS_TYPE_OF(type, CMD_GET_FILE_TYPES)) {
         struct json_object *arr = json_object_new_array();
         struct json_object *arr_elm;
 
@@ -252,23 +333,13 @@ void onmessage(struct lws *wsi, const void *msg, size_t len, bool is_bin) {
             .file = &(db_file_t){.id = file_id},
             .wsis = NULL,
         };
-
         struct file_info *pfi =
             vec_get(vhd->files, vec_index_of(vhd->files, &fi));
 
         if (!pfi) {
             fi.file = db_file_get(conn, file_id, false);
             if (!fi.file) {
-                error_t *err = get_error();
-
-                struct json_object *res_err = json_object_new_object();
-                json_object_object_add(
-                    res_err, "error", json_object_new_string(err->message));
-                json_object_object_add(res, CMD_GET, res_err);
-
-                ws_send_res(wsi, res);
-                destroy_error(err);
-                goto __onmsg_drops;
+                goto __onmsg_error;
             }
 
             fi.wsis = vec_new_r(struct lws *, NULL, NULL, NULL);
@@ -277,22 +348,14 @@ void onmessage(struct lws *wsi, const void *msg, size_t len, bool is_bin) {
         }
 
         vec_add(pfi->wsis, &wsi);
+        remove_ws_from_file(vhd->files, wsi);
         pss->file = pfi->file;
 
         db_file_t *file = pfi->file;
         if (get_all) {
             file = db_file_get(conn, file_id, true);
             if (!file) {
-                error_t *err = get_error();
-
-                struct json_object *res_err = json_object_new_object();
-                json_object_object_add(
-                    res_err, "error", json_object_new_string(err->message));
-                json_object_object_add(res, CMD_GET, res_err);
-
-                ws_send_res(wsi, res);
-                destroy_error(err);
-                goto __onmsg_drops;
+                goto __onmsg_error;
             }
         }
 
@@ -333,9 +396,446 @@ void onmessage(struct lws *wsi, const void *msg, size_t len, bool is_bin) {
         if (get_all) {
             db_file_drop(file);
         }
+    } else if (CMD_IS_TYPE_OF(type, CMD_GET_FILE_PERS)) {
+        uint64_t file_id = atol(
+            json_object_get_string(json_object_array_get_idx(cmd->args, 0)));
+
+        struct file_info fi = {
+            .file = &(db_file_t){.id = file_id},
+            .wsis = NULL,
+        };
+        struct file_info *pfi =
+            vec_get(vhd->files, vec_index_of(vhd->files, &fi));
+
+        if (!pfi) {
+            fi.file = db_file_get(conn, file_id, false);
+            if (!fi.file) {
+                goto __onmsg_error;
+            }
+
+            fi.wsis = vec_new_r(struct lws *, NULL, NULL, NULL);
+            vec_add(vhd->files, &fi);
+            pfi = vec_get(vhd->files, vec_index_of(vhd->files, &fi));
+        }
+
+        vec_add(pfi->wsis, &wsi);
+        remove_ws_from_file(vhd->files, wsi);
+        pss->file = pfi->file;
+
+        db_file_pers_t *file_pers = db_file_get_pers(conn, file_id);
+
+        char                uid[21];
+        struct json_object *file_pers_res = json_object_new_object();
+        struct json_object *user_pers     = json_object_new_array();
+        struct json_object *permission    = NULL;
+
+        for (db_user_pers_t *per = file_pers->user_pers; per; per = per->next) {
+            permission = json_object_new_object();
+            sprintf(uid, "%lu", per->user_id);
+
+            json_object_object_add(
+                permission, "user_id", json_object_new_string(uid));
+            json_object_object_add(
+                permission, "per_id", json_object_new_int(per->per_id));
+            json_object_object_add(
+                permission, "is_owner", json_object_new_boolean(per->is_owner));
+
+            json_object_array_add(user_pers, permission);
+        }
+
+        json_object_object_add(file_pers_res, "everyone_can",
+            json_object_new_int(file_pers->everyone_can));
+        json_object_object_add(file_pers_res, "user_pers", user_pers);
+
+        json_object_object_add(res, CMD_GET_FILE_PERS, file_pers_res);
+        ws_send_res(wsi, res);
+
+        db_file_pers_drop(file_pers);
+    } else if (CMD_IS_TYPE_OF(type, CMD_GET_USER_PERS)) {
+        db_user_t      *current_user      = pss->user;
+        db_user_pers_t *current_user_pers = NULL;
+
+        if (!current_user) {
+            raise_error(401, "%s: user not login", __func__);
+            goto __onmsg_error;
+        } else {
+            current_user_pers = db_file_get_user_per(conn, current_user->id);
+        }
+
+        char fid[21];
+
+        struct json_object *user_pers_res = json_object_new_array();
+        struct json_object *permission    = NULL;
+
+        for (db_user_pers_t *per = current_user_pers; per; per = per->next) {
+            permission = json_object_new_object();
+            sprintf(fid, "%lu", per->file_id);
+
+            json_object_object_add(
+                permission, "file_id", json_object_new_string(fid));
+            json_object_object_add(
+                permission, "per_id", json_object_new_int(per->per_id));
+            json_object_object_add(
+                permission, "is_owner", json_object_new_boolean(per->is_owner));
+
+            json_object_array_add(user_pers_res, permission);
+        }
+
+        json_object_object_add(res, CMD_GET_USER_PERS, user_pers_res);
+        ws_send_res(wsi, res);
+
+        db_user_pers_drop(current_user_pers);
+    } else if (CMD_IS_TYPE_OF(type, CMD_SET_FILE_PER)) {
+        uint64_t file_id = atol(
+            json_object_get_string(json_object_array_get_idx(cmd->args, 0)));
+        uint64_t per_id =
+            json_object_get_int64(json_object_array_get_idx(cmd->args, 1));
+
+        struct file_info fi = {
+            .file = &(db_file_t){.id = file_id},
+            .wsis = NULL,
+        };
+        struct file_info *pfi =
+            vec_get(vhd->files, vec_index_of(vhd->files, &fi));
+
+        if (!pfi) {
+            fi.file = db_file_get(conn, file_id, false);
+            if (!fi.file) {
+                goto __onmsg_error;
+            }
+
+            fi.wsis = vec_new_r(struct lws *, NULL, NULL, NULL);
+            vec_add(vhd->files, &fi);
+            pfi = vec_get(vhd->files, vec_index_of(vhd->files, &fi));
+        }
+        vec_add(pfi->wsis, &wsi);
+
+        bool result = db_file_set_per(conn, file_id, per_id);
+        if (!result) {
+            goto __onmsg_error;
+        }
+
+        json_object_object_add(
+            res, CMD_SET_FILE_PER, json_object_new_boolean(result));
+        ws_send_res(wsi, res);
+    } else if (CMD_IS_TYPE_OF(type, CMD_SET_USER_PER)) {
+        uint64_t file_id = atol(
+            json_object_get_string(json_object_array_get_idx(cmd->args, 0)));
+        uint64_t user_id = atol(
+            json_object_get_string(json_object_array_get_idx(cmd->args, 1)));
+        uint64_t per_id =
+            json_object_get_int64(json_object_array_get_idx(cmd->args, 2));
+
+        struct file_info fi = {
+            .file = &(db_file_t){.id = file_id},
+            .wsis = NULL,
+        };
+        struct file_info *pfi =
+            vec_get(vhd->files, vec_index_of(vhd->files, &fi));
+
+        if (!pfi) {
+            fi.file = db_file_get(conn, file_id, false);
+            if (!fi.file) {
+                goto __onmsg_error;
+            }
+
+            fi.wsis = vec_new_r(struct lws *, NULL, NULL, NULL);
+            vec_add(vhd->files, &fi);
+            pfi = vec_get(vhd->files, vec_index_of(vhd->files, &fi));
+        }
+        vec_add(pfi->wsis, &wsi);
+
+        bool result = db_file_set_user_per(conn, file_id, user_id, per_id);
+        if (!result) {
+            goto __onmsg_error;
+        }
+
+        json_object_object_add(
+            res, CMD_SET_USER_PER, json_object_new_boolean(result));
+        ws_send_res(wsi, res);
+    } else if (CMD_IS_TYPE_OF(type, CMD_SET_USER_POINTER)) {
+        uint64_t file_id =
+            json_object_get_uint64(json_object_array_get_idx(cmd->args, 0));
+        int row = json_object_get_int(json_object_array_get_idx(cmd->args, 1));
+        int column =
+            json_object_get_int(json_object_array_get_idx(cmd->args, 2));
+
+        struct file_info fi = {
+            .file = &(db_file_t){.id = file_id},
+            .wsis = NULL,
+        };
+        struct file_info *pfi =
+            vec_get(vhd->files, vec_index_of(vhd->files, &fi));
+
+        if (!pfi || vec_index_of(pfi->wsis, &wsi) == -1lu) {
+            raise_error(402, "%s: file not open", __func__);
+            goto __onmsg_error;
+        }
+
+        char wid[21];
+        sprintf(wid, "%lu", (uint64_t)wsi);
+
+        json_object *user_pointer = json_object_new_object();
+        json_object_object_add(user_pointer, "username",
+            pss->user ? json_object_new_string(pss->user->username) : NULL);
+        json_object_object_add(
+            user_pointer, "ws_id", json_object_new_string(wid));
+        json_object_object_add(user_pointer, "row", json_object_new_int(row));
+        json_object_object_add(
+            user_pointer, "column", json_object_new_int(column));
+
+        json_object_object_add(res, type, user_pointer);
+        ws_broadcast_res_with_file(pfi->wsis, wsi, res);
+    } else if (CMD_IS_TYPE_OF(type, CMD_FILE_CREATE)) {
+        uint64_t owner = atol(
+            json_object_get_string(json_object_array_get_idx(cmd->args, 0)));
+        int everyone_can =
+            json_object_get_int(json_object_array_get_idx(cmd->args, 1));
+        int file_type =
+            json_object_get_int(json_object_array_get_idx(cmd->args, 2));
+        const char *content =
+            json_object_get_string(json_object_array_get_idx(cmd->args, 3));
+
+        db_file_t *file =
+            db_file_create(conn, owner, everyone_can, content, file_type);
+        if (!file) {
+            goto __onmsg_error;
+        }
+
+        struct file_info fi = {
+            .file = file,
+            .wsis = vec_new_r(struct lws *, NULL, NULL, NULL),
+        };
+        vec_add(vhd->files, &fi);
+        struct file_info *pfi =
+            vec_get(vhd->files, vec_index_of(vhd->files, &fi));
+        vec_add(pfi->wsis, &wsi);
+
+        struct json_object *new_file = json_object_new_object();
+        char                fid[21], uid[21], vid[21];
+
+        sprintf(fid, "%lu", file->id);
+        sprintf(uid, "%lu", owner);
+        sprintf(vid, "%lu", file->current_version);
+
+        struct json_object *contents = json_object_new_array();
+        struct json_object *version  = NULL;
+
+        for (db_content_version_t *ver = file->contents; ver; ver = ver->prev) {
+            version = json_object_new_object();
+
+            sprintf(vid, "%lu", ver->id);
+            sprintf(uid, "%lu", ver->update_by);
+
+            json_object_object_add(
+                version, "ver_id", json_object_new_string(vid));
+            json_object_object_add(version, "update_by",
+                ver->update_by != 0 ? json_object_new_string(uid) : NULL);
+            json_object_object_add(
+                version, "content", json_object_new_string(ver->content));
+
+            json_object_array_add(contents, version);
+        }
+
+        json_object_object_add(
+            new_file, "file_id", json_object_new_string(fid));
+        json_object_object_add(new_file, "owner", json_object_new_string(uid));
+        json_object_object_add(
+            new_file, "version_id", json_object_new_string(vid));
+        json_object_object_add(
+            new_file, "file_type", json_object_new_int(file_type));
+        json_object_object_add(
+            new_file, "everyone_can", json_object_new_int(file->everyone_can));
+        json_object_object_add(new_file, "contents", contents);
+
+        json_object_object_add(res, type, new_file);
+        ws_send_res(wsi, res);
+        db_file_drop(file);
+    } else if (CMD_IS_TYPE_OF(type, CMD_FILE_DELETE)) {
+        uint64_t file_id = atol(
+            json_object_get_string(json_object_array_get_idx(cmd->args, 0)));
+
+        bool result = db_file_delete(conn, file_id);
+        if (!result) {
+            goto __onmsg_error;
+        }
+
+        json_object_object_add(res, type, json_object_new_boolean(result));
+        ws_send_res(wsi, res);
+    } else if (CMD_IS_TYPE_OF(type, CMD_SAVE)) {
+        uint64_t file_id = atol(
+            json_object_get_string(json_object_array_get_idx(cmd->args, 0)));
+        uint64_t user_id = atol(
+            json_object_get_string(json_object_array_get_idx(cmd->args, 1)));
+        const char *content =
+            json_object_get_string(json_object_array_get_idx(cmd->args, 2));
+
+        struct file_info fi = {
+            .file = &(db_file_t){.id = file_id},
+            .wsis = NULL,
+        };
+        struct file_info *pfi =
+            vec_get(vhd->files, vec_index_of(vhd->files, &fi));
+
+        if (!pfi) {
+            fi.file = db_file_get(conn, file_id, false);
+            if (!fi.file) {
+                goto __onmsg_error;
+            }
+
+            fi.wsis = vec_new_r(struct lws *, NULL, NULL, NULL);
+            vec_add(vhd->files, &fi);
+            pfi = vec_get(vhd->files, vec_index_of(vhd->files, &fi));
+        }
+        vec_add(pfi->wsis, &wsi);
+
+        uint64_t ver_id = db_file_save(conn, file_id, user_id, content);
+        if (!ver_id) {
+            goto __onmsg_error;
+        }
+
+        struct json_object *new_version = json_object_new_object();
+        char                fid[21], uid[21], vid[21];
+
+        sprintf(fid, "%lu", file_id);
+        sprintf(vid, "%lu", ver_id);
+        sprintf(uid, "%lu", user_id);
+
+        json_object_object_add(
+            new_version, "file_id", json_object_new_string(fid));
+        json_object_object_add(
+            new_version, "version_id", json_object_new_string(vid));
+        json_object_object_add(
+            new_version, "update_by", json_object_new_string(uid));
+        json_object_object_add(
+            new_version, "content", json_object_new_string(content));
+
+        json_object_object_add(res, type, new_version);
+
+        ws_broadcast_res_with_file(pfi->wsis, wsi, res);
     } else {
-        my_ws_send_all(wsi, wsi, msg_s, strlen(msg_s), false);
+        // type: insert, remove
+        uint64_t file_id = atol(
+            json_object_get_string(json_object_array_get_idx(cmd->args, 0)));
+        uint64_t user_id = atol(
+            json_object_get_string(json_object_array_get_idx(cmd->args, 1)));
+        int from = json_object_get_int(json_object_array_get_idx(cmd->args, 2));
+        int to   = json_object_get_int(json_object_array_get_idx(cmd->args, 3));
+        struct json_object *event  = NULL;
+        const char         *string = NULL;
+
+        if (from < 0 || (to > 0 && to < from)) {
+            raise_error(400, "%s: invalid offset", __func__);
+            goto __onmsg_error;
+        }
+
+        if (CMD_IS_TYPE_OF(type, CMD_INSERT)) {
+            string =
+                json_object_get_string(json_object_array_get_idx(cmd->args, 4));
+            json_object_deep_copy(json_object_array_get_idx(cmd->args, 5),
+                &event, json_c_shallow_copy_default);
+        } else {
+            json_object_deep_copy(json_object_array_get_idx(cmd->args, 4),
+                &event, json_c_shallow_copy_default);
+        }
+        json_object_object_add(res, "event", event);
+
+        struct file_info fi = {
+            .file = &(db_file_t){.id = file_id},
+            .wsis = NULL,
+        };
+        struct file_info *pfi =
+            vec_get(vhd->files, vec_index_of(vhd->files, &fi));
+
+        if (!pfi) {
+            fi.file = db_file_get(conn, file_id, false);
+            if (!fi.file) {
+                goto __onmsg_error;
+            }
+
+            fi.wsis = vec_new_r(struct lws *, NULL, NULL, NULL);
+            vec_add(vhd->files, &fi);
+            pfi = vec_get(vhd->files, vec_index_of(vhd->files, &fi));
+        }
+        vec_add(pfi->wsis, &wsi);
+
+        uint64_t ver_id =
+            db_file_update(conn, file_id, user_id, from, to, string);
+        if (!ver_id) {
+            goto __onmsg_error;
+        }
+
+        pfi->file->contents->id        = ver_id;
+        pfi->file->current_version     = ver_id;
+        pfi->file->contents->update_by = user_id;
+
+        char *old_content = pfi->file->contents->content;
+
+        size_t old_len = strlen(old_content);
+        size_t new_len = strlen(old_content) + 1;
+        if (string) new_len += strlen(string);
+
+        // insert/remove old content
+        if ((size_t)from > old_len) {
+            from = old_len;
+            to   = from;
+        }
+
+        if ((size_t)to > old_len - 1) {
+            to = old_len;
+        }
+
+        char *new_content = malloc(new_len);
+        strcpy(new_content, pfi->file->contents->content);
+        new_content[from] = '\0';
+
+        if (string) { // insert
+            strcat(new_content, string);
+            strcat(new_content, old_content + from);
+        } else { // remove
+            strcat(new_content, old_content + to + 1);
+        }
+
+        free(pfi->file->contents->content);
+        pfi->file->contents->content = new_content;
+
+        struct json_object *new_version = json_object_new_object();
+        char                fid[21], uid[21], vid[21];
+
+        sprintf(fid, "%lu", file_id);
+        sprintf(vid, "%lu", ver_id);
+        sprintf(uid, "%lu", user_id);
+
+        json_object_object_add(
+            new_version, "file_id", json_object_new_string(fid));
+        json_object_object_add(
+            new_version, "ver_id", json_object_new_string(vid));
+        json_object_object_add(new_version, "update_by",
+            user_id == 0 ? NULL : json_object_new_string(uid));
+        json_object_object_add(new_version, "from", json_object_new_int(from));
+        json_object_object_add(new_version, "to", json_object_new_int(to));
+        if (CMD_IS_TYPE_OF(type, CMD_INSERT)) {
+            json_object_object_add(
+                new_version, "string", json_object_new_string(string));
+        }
+
+        json_object_object_add(res, type, new_version);
+
+        ws_broadcast_res_with_file(pfi->wsis, wsi, res);
     }
+
+    goto __onmsg_drops;
+
+__onmsg_error:;
+    error_t *err = get_error();
+
+    struct json_object *res_err = json_object_new_object();
+    json_object_object_add(
+        res_err, "error", json_object_new_string(err->message));
+    json_object_object_add(res, type, res_err);
+
+    ws_send_res(wsi, res);
+    destroy_error(err);
 
 __onmsg_drops:
     free(msg_s);

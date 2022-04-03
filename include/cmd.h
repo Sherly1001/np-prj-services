@@ -16,16 +16,25 @@ typedef const char *cmd_type_t;
 #define CMD_IS_TYPE_OF(type, of) (strcmp(type, of) == 0)
 
 static const char cmd_types[][50] = {
-    "insert, %s %s %ld %s",
+    "insert, %s %s %ld %ld %s",
     "remove, %s %s %ld %ld",
-    "save, %s %s",
+    "save, %s %s %s",
     "get, %s %u",
     "get-file-types, ",
 
-    "get-pers, ",
-    "set-per, %s %ld",
+    "get-user-pers, ",
+    "get-file-pers, %s",
+    "set-file-per, %s %ld",
     "set-user-per, %s %s %ld",
     "get-per-types, ",
+    // "get-user-per-on-file, %s %s",
+
+    "login, %s",
+
+    "create-file, %s %ld %ld %s",
+    "delete-file, %s",
+
+    "set-user-pointer, %s %ld %ld",
 };
 
 #define CMD_INSERT         "insert"
@@ -34,10 +43,19 @@ static const char cmd_types[][50] = {
 #define CMD_GET            "get"
 #define CMD_GET_FILE_TYPES "get-file-types"
 
-#define CMD_GET_PERS      "get-pers"
-#define CMD_SET_PER       "set-per"
+#define CMD_GET_USER_PERS "get-user-pers"
+#define CMD_GET_FILE_PERS "get-file-pers"
+#define CMD_SET_FILE_PER  "set-file-per"
 #define CMD_SET_USER_PER  "set-user-per"
 #define CMD_GET_PER_TYPES "get-per-types"
+// #define CMD_GET_USER_PER_ON_FILE "get-user-per-on-file"
+
+#define CMD_FILE_CREATE "create-file"
+#define CMD_FILE_DELETE "delete-file"
+
+#define CMD_LOGIN "login"
+
+#define CMD_SET_USER_POINTER "set-user-pointer"
 
 #define CMD_ARG_IS_KIND_OF(kind, of) (strcmp(kind, of) == 0)
 

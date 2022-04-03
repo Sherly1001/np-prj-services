@@ -71,6 +71,11 @@ db_file_t *db_file_create(PGconn *conn, uint64_t owner, uint16_t everyone_can,
 // [E]: get file from db
 db_file_t *db_file_get(PGconn *conn, uint64_t file_id, bool get_all_history);
 
+// [E]: insert/remove content in a file from db, return new version id, 0 if
+// failed
+uint64_t db_file_update(PGconn *conn, uint64_t file_id, uint64_t update_by,
+    size_t from, size_t to, const char *string);
+
 // [E]: save file to db, return 0 if failed otherwise return new version id
 uint64_t db_file_save(PGconn *conn, uint64_t file_id, const uint64_t user_id,
     const char *content);
@@ -78,11 +83,16 @@ uint64_t db_file_save(PGconn *conn, uint64_t file_id, const uint64_t user_id,
 // [E]: delete file from db
 bool db_file_delete(PGconn *conn, uint64_t file_id);
 // [E]: set file permissions
-bool db_file_set_per(
+bool db_file_set_per(PGconn *conn, uint64_t file_id, int per_id);
+// [E]: set file permissions for an user
+bool db_file_set_user_per(
     PGconn *conn, uint64_t file_id, uint64_t user_id, int per_id);
 
 db_file_pers_t *db_file_get_pers(PGconn *conn, uint64_t file_id);
 db_user_pers_t *db_file_get_user_per(PGconn *conn, uint64_t user_id);
+int  db_get_user_per_on_file(PGconn *conn, uint64_t user_id, uint64_t file_id);
+bool db_user_has_per_on_file(
+    PGconn *conn, uint64_t user_id, uint64_t file_id, int permission_type);
 
 // [E]: create new user
 db_user_t *db_user_add(PGconn *conn, const char *username, const char *passwd,

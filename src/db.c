@@ -41,6 +41,10 @@ db_file_t *db_file_create(PGconn *conn, uint64_t owner, uint16_t everyone_can,
     uint64_t file_id = snowflake_lock_id(__snf);
     uint64_t ver_id  = snowflake_lock_id(__snf);
 
+    if (owner == 0) {
+        everyone_can = 3;
+    }
+
     char ids[5][21];
     sprintf(ids[0], "%ld", file_id);
     sprintf(ids[1], "%ld", ver_id);
@@ -81,11 +85,12 @@ db_file_t *db_file_create(PGconn *conn, uint64_t owner, uint16_t everyone_can,
     PQclear(res);
 
     db_content_version_t *contents = malloc(sizeof(db_content_version_t));
-    contents->content              = malloc(sizeof(content) + 1);
-    strcpy(contents->content, content);
+
     contents->id        = ver_id;
     contents->update_by = owner;
     contents->prev      = NULL;
+    contents->content   = malloc(strlen(content) + 1);
+    strcpy(contents->content, content);
 
     db_file_t *file       = malloc(sizeof(db_file_t));
     file->id              = file_id;
@@ -156,6 +161,96 @@ db_file_t *db_file_get(PGconn *conn, uint64_t file_id, bool get_all_history) {
     return file;
 }
 
+uint64_t db_file_update(PGconn *conn, uint64_t file_id, uint64_t update_by,
+    size_t from, size_t to, const char *string) {
+
+    if (!__snf) {
+        raise_error(1001, "%s: not found id generator", __func__);
+        return 0;
+    }
+
+    uint64_t ver_id = snowflake_lock_id(__snf);
+
+    // check user permission
+    if (db_user_has_per_on_file(conn, update_by, file_id, 3) == false) {
+        raise_error(330, "%s: user %ld permission denied", __func__, update_by);
+        return 0;
+    }
+
+    // if user has edit permission
+    char *new_content, *old_content;
+    char  ids[3][21];
+    sprintf(ids[0], "%ld", file_id);
+    sprintf(ids[1], "%ld", update_by);
+    sprintf(ids[2], "%ld", ver_id);
+
+    const char *params[4] = {
+        ids[0],
+    };
+
+    // get the content of the current version
+    PGresult *res = db_exec(conn,
+        "select current_version, content from content_versions cv\n"
+        "inner join files on files.current_version = cv.id\n"
+        "where file_id = $1",
+        1, params, PGRES_TUPLES_OK, 0, NULL);
+    if (!res) return 0;
+
+    if (atoi(PQcmdTuples(res)) != 1) {
+        raise_error(331, "%s: file %ld not exist", __func__, file_id);
+        PQclear(res);
+        return 0;
+    }
+
+    old_content    = PQgetvalue(res, 0, 1);
+    size_t old_len = PQgetlength(res, 0, 1);
+    size_t new_len = old_len + 1;
+    if (string) { // insert
+        new_len += strlen(string);
+    }
+
+    // insert/remove old content
+    if (from > old_len) {
+        from = old_len;
+        to   = from;
+    }
+
+    if (to > old_len - 1) {
+        to = old_len;
+    }
+
+    new_content = malloc(new_len);
+    strcpy(new_content, old_content);
+    new_content[from] = '\0';
+
+    if (string) { // insert
+        strcat(new_content, string);
+        strcat(new_content, old_content + from);
+    } else { // remove
+        strcat(new_content, old_content + to + 1);
+    }
+
+    // update content
+    params[0] = ids[2];                         // ver_id
+    params[1] = ids[0];                         // file_id
+    params[2] = update_by == 0 ? NULL : ids[1]; // update_by
+    params[3] = new_content;
+
+    PQclear(res);
+    res = db_exec(conn,
+        "insert into content_versions values ($1, $2, $3, $4::text)", 4, params,
+        PGRES_COMMAND_OK, 332, __func__);
+    if (!res) return 0;
+
+    PQclear(res);
+    res = db_exec(conn, "update files set current_version = $1 where id = $2",
+        2, params, PGRES_COMMAND_OK, 333, __func__);
+    if (!res) return 0;
+
+    PQclear(res);
+    return ver_id;
+}
+
 uint64_t db_file_save(PGconn *conn, uint64_t file_id, const uint64_t user_id,
     const char *content) {
 
@@ -189,6 +284,16 @@ uint64_t db_file_save(PGconn *conn, uint64_t file_id, const uint64_t user_id,
     if (!res) return 0;
     PQclear(res);
 
+    params[0] = ids[1];
+
+    res = db_exec(conn,
+        "select cv.id from content_versions cv\n"
+        "inner join files on current_version = cv.id\n"
+        "where file_id = $1",
+        1, params, PGRES_TUPLES_OK, 0, NULL);
+    if (!res) return 0;
+
+    PQclear(res);
     return ver_id;
 }
 
@@ -211,7 +316,30 @@ bool db_file_delete(PGconn *conn, uint64_t file_id) {
     return true;
 }
 
-bool db_file_set_per(
+bool db_file_set_per(PGconn *conn, uint64_t file_id, int per_id) {
+
+    char ids[2][21];
+    sprintf(ids[0], "%ld", file_id);
+    sprintf(ids[1], "%d", per_id);
+
+    const char *params[] = {
+        ids[0],
+        ids[1],
+    };
+
+    PGresult *res = db_exec(conn,
+        "update files\n"
+        "set everyone_can = $2\n"
+        "where id = $1",
+        2, params, PGRES_COMMAND_OK, 310, __func__);
+    if (!res) return false;
+
+    PQclear(res);
+
+    return true;
+}
+
+bool db_file_set_user_per(
     PGconn *conn, uint64_t file_id, uint64_t user_id, int per_id) {
 
     if (!__snf) {
@@ -342,6 +470,58 @@ db_user_pers_t *db_file_get_user_per(PGconn *conn, uint64_t user_id) {
     }
 
     return pers;
+}
+
+int db_get_user_per_on_file(PGconn *conn, uint64_t user_id, uint64_t file_id) {
+    char ids[2][21];
+    sprintf(ids[0], "%ld", file_id);
+    sprintf(ids[1], "%ld", user_id);
+
+    const char *params[] = {
+        ids[0],
+        ids[1],
+    };
+
+    // if user is file owner -> permission = 3
+    PGresult *res = db_exec(conn,
+        "select owner from files\n"
+        "where id = $1 and owner = $2",
+        2, params, PGRES_TUPLES_OK, 0, NULL);
+    if (PQntuples(res) == 1) {
+        PQclear(res);
+        return 3;
+    }
+
+    // if else user has per in user_file_permissions
+    PQclear(res);
+    res = db_exec(conn,
+        "select permission_id from user_file_permissions\n"
+        "where file_id = $1 and user_id = $2",
+        2, params, PGRES_TUPLES_OK, 0, NULL);
+
+    if (PQntuples(res) == 1) {
+        PQclear(res);
+        return atoi(PQgetvalue(res, 0, 0));
+    }
+
+    // else everyone_can
+    PQclear(res);
+    res = db_exec(conn, "select everyone_can from files where files.id = $1", 1,
+        params, PGRES_TUPLES_OK, 0, NULL);
+
+    int permission_type = atoi(PQgetvalue(res, 0, 0));
+    PQclear(res);
+
+    return permission_type;
+}
+
+bool db_user_has_per_on_file(
+    PGconn *conn, uint64_t user_id, uint64_t file_id, int permission_type) {
+    int user_permission = db_get_user_per_on_file(conn, user_id, file_id);
+    if (user_permission >= permission_type) {
+        return true;
+    }
+    return false;
 }
 
 db_user_t *db_user_add(PGconn *conn, const char *username, const char *passwd,
